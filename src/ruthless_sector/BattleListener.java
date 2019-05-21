@@ -35,14 +35,20 @@ public class BattleListener {
     }
 
     public static void setBattle(BattleAPI battle) {
-        BattleListener.battle = battle;
-        battleInvolvesRemnants = false;
+        try {
+            BattleListener.battle = battle;
+            battleInvolvesRemnants = false;
 
-        for(CampaignFleetAPI fleet : battle.getNonPlayerSide()) {
-            if(fleet.getFaction().getId().equals(Factions.REMNANTS)) {
-                battleInvolvesRemnants = true;
+            if(battle == null || battle.getBothSides() == null) return;
+
+            for (CampaignFleetAPI fleet : battle.getBothSides()) {
+                if(fleet.getFaction() == null) continue;
+
+                if (fleet.getFaction().getId().equals(Factions.REMNANTS)) {
+                    battleInvolvesRemnants = true;
+                }
             }
-        }
+        } catch(Exception e) { ModPlugin.reportCrash(e); }
     }
 
     public static void processEngagementResults(EngagementResultAPI result) {

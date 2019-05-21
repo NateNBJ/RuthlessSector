@@ -253,7 +253,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     void updateDanger(CampaignFleetAPI fleet) {
         double strength = BattleListener.tallyShipStrength(fleet.getFleetData().getMembersListCopy(), false);
         double ratio = strength / pfStrength;
-        int danger = 8;
+        int danger = 10;
 
         if(ratio < 0.50) danger = 1;
         else if(ratio < 0.75) danger = 2;
