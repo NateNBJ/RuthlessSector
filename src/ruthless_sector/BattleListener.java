@@ -38,6 +38,9 @@ public class BattleListener {
         try {
             BattleListener.battle = battle;
             battleInvolvesRemnants = false;
+            ModPlugin.difficultyMultiplierForLastBattle.val = 0.0;
+            ModPlugin.playerFleetStrengthInLastBattle.val = 0.0;
+            ModPlugin.enemyFleetStrengthInLastBattle.val = 0.0;
 
             if(battle == null || battle.getBothSides() == null) return;
 
@@ -46,6 +49,17 @@ public class BattleListener {
 
                 if (fleet.getFaction().getId().equals(Factions.REMNANTS)) {
                     battleInvolvesRemnants = true;
+                } else if(fleet.getFaction().getId().equals(Factions.DERELICT)) {
+                    // TODO
+//                    log("Giving bonus to derelicts");
+//                    for(FleetMemberAPI ship : fleet.getFleetData().getMembersListCopy()) {
+//                        ship.getStats().getEnergyWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
+//                        ship.getStats().getBallisticWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
+//                        ship.getStats().getMissileWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
+//
+//                        ship.getVariant().addMod("advancedcore");
+//                        ship.updateStats();
+//                    }
                 }
             }
         } catch(Exception e) { ModPlugin.reportCrash(e); }
@@ -99,7 +113,7 @@ public class BattleListener {
 
             reloadPenalty = Math.max(0, Math.min(1, reloadPenalty));
 
-            double playerStrength = tallyShipStrength(deployedPlayerShips, true);
+            double playerStrength = tallyShipStrength(deployedPlayerShips, true, true);
             float modifier = 0;
 
             if (xp > 0) {
@@ -146,21 +160,21 @@ public class BattleListener {
                             }
                         }
 
-                        if(picker.isEmpty()) return xp;
+                        if(!picker.isEmpty()) {
+                            FactionAPI faction = picker.pick();
 
-                        FactionAPI faction = picker.pick();
+                            repGain -= Math.max(0, faction.getRelToPlayer().getRel()) * 4f;
+                            repGain = (float) Math.floor(repGain) + (Math.random() <= repGain - Math.floor(repGain) ? 1 : 0);
+                            repGain = Math.min(ModPlugin.MAX_REP_GAIN, repGain);
+                            repGain *= 0.01f;
 
-                        repGain -= Math.max(0, faction.getRelToPlayer().getRel()) * 4f;
-                        repGain = (float)Math.floor(repGain) + (Math.random() <= repGain - Math.floor(repGain) ? 1 : 0);
-                        repGain = Math.min(ModPlugin.MAX_REP_GAIN, repGain);
-                        repGain *= 0.01f;
+                            log("Rep change of " + repGain + " with " + faction.getId() + " due to impressive victory");
 
-                        log("Rep change of " + repGain + " with " + faction.getId() + " due to impressive victory");
-
-                        if(repGain > 0) {
-                            faction.adjustRelationship("player", repGain);
-                            CoreReputationPlugin.addAdjustmentMessage(repGain, faction, null,
-                                    null, null, null, null, true, 0f, "Change caused by impressive victory");
+                            if (repGain > 0) {
+                                faction.adjustRelationship("player", repGain);
+                                CoreReputationPlugin.addAdjustmentMessage(repGain, faction, null,
+                                        null, null, null, null, true, 0f, "Change caused by impressive victory");
+                            }
                         }
                     }
                 }
@@ -201,14 +215,14 @@ public class BattleListener {
 
                 battle.genCombined();
 
-                enemyStrength = tallyShipStrength(battle.getNonPlayerCombined().getFleetData().getMembersListCopy(), false);
+                enemyStrength = tallyShipStrength(battle.getNonPlayerCombined().getFleetData().getMembersListCopy(), false, true);
             }
 
 
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 
-    public static double tallyShipStrength(Collection<FleetMemberAPI> fleet, boolean isPlayerSide) {
+    public static double tallyShipStrength(Collection<FleetMemberAPI> fleet, boolean isPlayerSide, boolean log) {
         float fpTotal = 0;
         float fpPerOfficerLevel = isPlayerSide
                 ? ModPlugin.ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL
@@ -219,11 +233,11 @@ public class BattleListener {
                 continue;
 
             //float fp = ship.getFleetPointCost() * (float)Math.pow(0.8f, ship.getVariant().getPermaMods().size());
-            float fp = ship.isStation() ? ship.getFleetPointCost() : ship.getDeploymentCostSupplies();
+            float fp = Math.max(ship.getFleetPointCost(), ship.getDeploymentCostSupplies());
             float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
                     : fp * ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
 
-            log(fp + " + " + captainBonus + " = " + (fp + captainBonus) + " : " + ship.getHullId());
+            if(log) log(fp + " + " + captainBonus + " = " + (fp + captainBonus) + " : " + ship.getHullId());
 
             fpTotal += fp + captainBonus;
         }
@@ -235,9 +249,9 @@ public class BattleListener {
 
             fpTotal *= ModPlugin.PLAYER_FLEET_STRENGTH_MULT;
 
-            log("Your total deployed strength: " + fpTotal + " + " + playerLevelBonus + " = " + (fpTotal + playerLevelBonus));
+            if(log) log("Your total deployed strength: " + fpTotal + " + " + playerLevelBonus + " = " + (fpTotal + playerLevelBonus));
             fpTotal += playerLevelBonus;
-        } else log("Total strength: " + fpTotal);
+        } else if(log) log("Total strength: " + fpTotal);
 
         return Math.max(1, fpTotal);
     }

@@ -228,10 +228,10 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     void updateDangerOfAllFleetsAtPlayerLocation(float maxDistance) {
         try {
             CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
-            pfStrength = BattleListener.tallyShipStrength(pf.getFleetData().getMembersListCopy(), true);
+            pfStrength = BattleListener.tallyShipStrength(pf.getFleetData().getMembersListCopy(), true, false);
 
             for(CampaignFleetAPI f : Misc.getNearbyFleets(pf, maxDistance)) {
-                updateDangerIfAtPlayerLocation(f);
+                if(f != pf) updateDangerIfAtPlayerLocation(f);
             }
         } catch (Exception e) {
             log(e.getMessage());
@@ -251,7 +251,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         }
     }
     void updateDanger(CampaignFleetAPI fleet) {
-        double strength = BattleListener.tallyShipStrength(fleet.getFleetData().getMembersListCopy(), false);
+        double strength = BattleListener.tallyShipStrength(fleet.getFleetData().getMembersListCopy(), false, false);
         double ratio = strength / pfStrength;
         int danger = 10;
 
