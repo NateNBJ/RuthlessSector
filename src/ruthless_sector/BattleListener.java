@@ -3,6 +3,7 @@ package ruthless_sector;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
+import com.fs.starfarer.api.combat.ShipVariantAPI;
 import com.fs.starfarer.api.fleet.FleetGoal;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
@@ -10,6 +11,7 @@ import com.fs.starfarer.api.impl.campaign.FleetEncounterContext;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
 import com.fs.starfarer.api.impl.campaign.intel.MessageIntel;
+import com.fs.starfarer.api.loading.VariantSource;
 import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.WeightedRandomPicker;
 import com.fs.starfarer.campaign.Faction;
@@ -38,9 +40,8 @@ public class BattleListener {
         try {
             BattleListener.battle = battle;
             battleInvolvesRemnants = false;
-            ModPlugin.difficultyMultiplierForLastBattle.val = 0.0;
-            ModPlugin.playerFleetStrengthInLastBattle.val = 0.0;
-            ModPlugin.enemyFleetStrengthInLastBattle.val = 0.0;
+
+            ModPlugin.resetIntegrationValues();
 
             if(battle == null || battle.getBothSides() == null) return;
 
@@ -49,18 +50,28 @@ public class BattleListener {
 
                 if (fleet.getFaction().getId().equals(Factions.REMNANTS)) {
                     battleInvolvesRemnants = true;
-                } else if(fleet.getFaction().getId().equals(Factions.DERELICT)) {
-                    // TODO
-//                    log("Giving bonus to derelicts");
+                }
+//                else if(fleet.getFaction().getId().equals(Factions.DERELICT)) {
+//                    log("Giving bonus to derelicts " + fleet.getFleetData().getMembersListCopy().size());
 //                    for(FleetMemberAPI ship : fleet.getFleetData().getMembersListCopy()) {
-//                        ship.getStats().getEnergyWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
-//                        ship.getStats().getBallisticWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
-//                        ship.getStats().getMissileWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
+////                        ship.getStats().getEnergyWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
+////                        ship.getStats().getBallisticWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
+////                        ship.getStats().getMissileWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
 //
-//                        ship.getVariant().addMod("advancedcore");
+////                        ship.getVariant().addMod("advancedcore");
+//
+//                        ShipVariantAPI v = ship.getVariant().clone();
+//                        v.setSource(VariantSource.REFIT);
+//                        v.addMod("advancedcore");
+//                        v.setHullVariantId(Misc.genUID());
+//                        ship.setVariant(v, false, false);
+//
+//
 //                        ship.updateStats();
 //                    }
-                }
+//
+//
+//                }
             }
         } catch(Exception e) { ModPlugin.reportCrash(e); }
     }
@@ -233,7 +244,7 @@ public class BattleListener {
                 continue;
 
             //float fp = ship.getFleetPointCost() * (float)Math.pow(0.8f, ship.getVariant().getPermaMods().size());
-            float fp = Math.max(ship.getFleetPointCost(), ship.getDeploymentCostSupplies());
+            float fp = ship.getDeploymentCostSupplies();
             float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
                     : fp * ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
 

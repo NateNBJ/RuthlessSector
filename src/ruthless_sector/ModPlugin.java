@@ -47,7 +47,8 @@ public class ModPlugin extends BaseModPlugin {
             MAX_ENEMY_FLEET_STRENGTH_ESTIMATION = 1.5f,
             LOOTED_CREDITS_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_MULTIPLIER = 1.0f,
-            LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = 0.5f;
+            LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = 0.5f,
+            RANGE_MULT_FOR_AUTOMATED_DEFENSES = 2.0f;
 
     static List<FactionAPI> allowedFactions = new ArrayList();
     static JSONObject commonData;
@@ -144,6 +145,8 @@ public class ModPlugin extends BaseModPlugin {
             LOOTED_SALVAGE_MULTIPLIER = (float)cfg.getDouble("lootedSalvageMultiplier");
             LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = (float)cfg.getDouble("lootedSalvageFromRemnantsMultiplier");
 
+            RANGE_MULT_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("rangeMultForAutomatedDefenses");
+
 
             Set<String> bl = fetchList(FACTION_BL_PATH);
             Set<String> wl = cfg.getBoolean("restrictRepGainToWhitlistedFactions")
@@ -228,5 +231,11 @@ public class ModPlugin extends BaseModPlugin {
     public static double getPlayerFleetStrengthInLastBattle() { return playerFleetStrengthInLastBattle.val; }
     public static double getEnemyFleetStrengthInLastBattle() {
         return enemyFleetStrengthInLastBattle.val;
+    }
+
+    public static void resetIntegrationValues() {
+        ModPlugin.difficultyMultiplierForLastBattle.val = 0.0;
+        ModPlugin.playerFleetStrengthInLastBattle.val = 0.0;
+        ModPlugin.enemyFleetStrengthInLastBattle.val = 0.0;
     }
 }

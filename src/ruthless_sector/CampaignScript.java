@@ -101,6 +101,8 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     updateDangerOfAllFleetsAtPlayerLocation(DANGER_UPDATE_RANGE);
                     timeUntilNextDangerUpdate += DANGER_UPDATE_PERIOD;
                 }
+
+                ModPlugin.resetIntegrationValues();
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
