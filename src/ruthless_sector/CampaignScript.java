@@ -59,6 +59,8 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                             + Misc.getRoundedValue((float) penalty * 100) + "% due to reloading after battle.", Misc.getNegativeHighlightColor());
                 }
 
+                updateDangerOfAllFleetsAtPlayerLocation();
+
                 messageDelay = Float.MIN_VALUE;
             }
 
@@ -78,6 +80,12 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                 playerJustRespawned = false;
             }
 
+            timeUntilNextDangerUpdate -= amount;
+
+            if(timeUntilNextDangerUpdate <= 0) {
+                updateDangerOfAllFleetsAtPlayerLocation(DANGER_UPDATE_RANGE);
+                timeUntilNextDangerUpdate += DANGER_UPDATE_PERIOD;
+            }
 
             if(Global.getSector().isPaused()) amount = 0;
             else if(Global.getSector().isInFastAdvance()) amount *= 2;
@@ -93,13 +101,6 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     float d = ModPlugin.AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS;
                     distanceToNextEncounter.val = d * 0.5f + random.nextFloat() * d;
                     spawnRemnantFleet(distanceFromCore);
-                }
-
-                timeUntilNextDangerUpdate -= amount;
-
-                if(timeUntilNextDangerUpdate <= 0) {
-                    updateDangerOfAllFleetsAtPlayerLocation(DANGER_UPDATE_RANGE);
-                    timeUntilNextDangerUpdate += DANGER_UPDATE_PERIOD;
                 }
 
                 ModPlugin.resetIntegrationValues();
@@ -253,6 +254,8 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         }
     }
     void updateDanger(CampaignFleetAPI fleet) {
+        //fleet.inflateIfNeeded();
+
         double strength = BattleListener.tallyShipStrength(fleet.getFleetData().getMembersListCopy(), false, false);
         double ratio = strength / pfStrength;
         int danger = 10;
@@ -273,7 +276,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 //                else if(ratio < 2.00) danger = 4;
 //                else danger = 5;
 
-        fleet.getMemory().set("$dangerLevelOverride", danger);
+        fleet.getMemoryWithoutUpdate().set("$dangerLevelOverride", danger);
     }
 
     @Override

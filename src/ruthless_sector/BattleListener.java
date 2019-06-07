@@ -3,7 +3,6 @@ package ruthless_sector;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
-import com.fs.starfarer.api.combat.ShipVariantAPI;
 import com.fs.starfarer.api.fleet.FleetGoal;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
@@ -11,12 +10,9 @@ import com.fs.starfarer.api.impl.campaign.FleetEncounterContext;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
 import com.fs.starfarer.api.impl.campaign.intel.MessageIntel;
-import com.fs.starfarer.api.loading.VariantSource;
 import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.WeightedRandomPicker;
-import com.fs.starfarer.campaign.Faction;
 
-import java.awt.*;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -51,27 +47,6 @@ public class BattleListener {
                 if (fleet.getFaction().getId().equals(Factions.REMNANTS)) {
                     battleInvolvesRemnants = true;
                 }
-//                else if(fleet.getFaction().getId().equals(Factions.DERELICT)) {
-//                    log("Giving bonus to derelicts " + fleet.getFleetData().getMembersListCopy().size());
-//                    for(FleetMemberAPI ship : fleet.getFleetData().getMembersListCopy()) {
-////                        ship.getStats().getEnergyWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
-////                        ship.getStats().getBallisticWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
-////                        ship.getStats().getMissileWeaponRangeBonus().modifyMult("rs_derelict_bonus", 2);
-//
-////                        ship.getVariant().addMod("advancedcore");
-//
-//                        ShipVariantAPI v = ship.getVariant().clone();
-//                        v.setSource(VariantSource.REFIT);
-//                        v.addMod("advancedcore");
-//                        v.setHullVariantId(Misc.genUID());
-//                        ship.setVariant(v, false, false);
-//
-//
-//                        ship.updateStats();
-//                    }
-//
-//
-//                }
             }
         } catch(Exception e) { ModPlugin.reportCrash(e); }
     }
@@ -157,7 +132,7 @@ public class BattleListener {
                         }
                     }
 
-                    if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES && modifier > 100) {
+                    if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES && modifier > 100 && context.didPlayerWinEncounter()) {
                         float repGain = (modifier / 100f - 1f) * 10 * (float)(Math.pow(enemyStrength / 50f, 0.3f) - 0.3f);
                         WeightedRandomPicker<FactionAPI> picker = new WeightedRandomPicker();
 
@@ -243,8 +218,7 @@ public class BattleListener {
             if(ship.isFighterWing() || ship.isCivilian() || !ship.canBeDeployedForCombat() || ship.isMothballed())
                 continue;
 
-            //float fp = ship.getFleetPointCost() * (float)Math.pow(0.8f, ship.getVariant().getPermaMods().size());
-            float fp = ship.getDeploymentCostSupplies();
+            float fp = getShipStrength(ship);
             float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
                     : fp * ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
 
@@ -265,6 +239,24 @@ public class BattleListener {
         } else if(log) log("Total strength: " + fpTotal);
 
         return Math.max(1, fpTotal);
+    }
+
+    static float getShipStrength(FleetMemberAPI ship) {
+        float fp = ship.getFleetPointCost();
+
+        if(ship.getHullSpec().isCivilianNonCarrier()) {
+            return 0;
+        } if(ship.isStation()) {
+            return fp;
+        } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
+            float dModMult = ship.getBaseDeploymentCostSupplies() > 0
+                    ? (ship.getDeploymentCostSupplies() / ship.getBaseDeploymentCostSupplies())
+                    : 1;
+
+            return fp * Math.max(1, Math.min(2, 1 + (fp - 5f) / 25f)) * dModMult;
+        } else{
+            return ship.getDeploymentCostSupplies();
+        }
     }
 
     public static float adjustSalvageMult(float vanillaSalvageMult) {
