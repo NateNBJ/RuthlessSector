@@ -6,18 +6,13 @@ import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
 import data.scripts.campaign.SWP_IBBFleetEncounterContext;
 import ruthless_sector.BattleListener;
+import ruthless_sector.ModPlugin;
 
 public class SwpCompatibleFeetEncounterContext extends SWP_IBBFleetEncounterContext {
     @Override
     public void setBattle(BattleAPI battle) {
         super.setBattle(battle);
         BattleListener.setBattle(battle);
-    }
-
-    @Override
-    public void processEngagementResults(EngagementResultAPI result) {
-        super.processEngagementResults(result);
-        BattleListener.processEngagementResults(result);
     }
 
     @Override
@@ -36,7 +31,7 @@ public class SwpCompatibleFeetEncounterContext extends SWP_IBBFleetEncounterCont
         float xp = BattleListener.getXpGain(this, side, otherSide);
 
         if (xp > 0) {
-            gainOfficerXP(side, xp);
+            gainOfficerXP(side, xp * ModPlugin.OFFICER_XP_MULT);
 
             fleet.getCommander().getStats().addXP((long) xp, textPanelForXPGain);
             fleet.getCommander().getStats().levelUpIfNeeded(textPanelForXPGain);

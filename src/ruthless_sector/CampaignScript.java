@@ -6,6 +6,9 @@ import com.fs.starfarer.api.Script;
 import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
+import com.fs.starfarer.api.combat.EngagementResultAPI;
+import com.fs.starfarer.api.fleet.FleetMemberAPI;
+import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
 import com.fs.starfarer.api.impl.campaign.fleets.FleetFactoryV3;
 import com.fs.starfarer.api.impl.campaign.fleets.FleetParamsV3;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
@@ -15,9 +18,12 @@ import com.fs.starfarer.api.impl.campaign.intel.MessageIntel;
 import com.fs.starfarer.api.impl.campaign.procgen.themes.RemnantSeededFleetManager;
 import com.fs.starfarer.api.util.Misc;
 
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Random;
 
+import com.fs.starfarer.api.util.WeightedRandomPicker;
 import org.lwjgl.util.vector.Vector2f;
 
 public class CampaignScript extends BaseCampaignEventListener implements EveryFrameScript {
@@ -28,12 +34,13 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     static final float DANGER_UPDATE_RANGE = 5000;
     static final int MAX_REMNANT_FLEETS = 3;
 
-    static boolean playerJustRespawned = false;
+    static boolean playerJustRespawned = false, timeHasPassedSinceLastEngagement = true;
 
     Saved<Float> distanceToNextEncounter = new Saved("distanceToNextEncounter", 100f);
     Saved<LinkedList<CampaignFleetAPI>> remnantFleets = new Saved<>("remnantFleets", new LinkedList<CampaignFleetAPI>());
 
     CampaignFleetAPI pf;
+    LocationAPI previousLocation = null;
     Random random = new Random();
     float messageDelay = 0.5f, timeUntilNextDangerUpdate = DANGER_UPDATE_PERIOD * 0.5695f;
     double pfStrength;
@@ -50,9 +57,9 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             if(pf == null) return;
 
             if(messageDelay != Float.MIN_VALUE && (messageDelay -= amount) <= 0) {
-                double penalty = Math.min(1, ModPlugin.getReloadPenalty());
+                double penalty = ModPlugin.getReloadPenalty();
 
-                Global.getLogger(ModPlugin.class).info("Reload Penalty: " + penalty);
+                Global.getLogger(CampaignScript.class).info("Reload Penalty: " + penalty);
 
                 if(penalty > 0) {
                     Global.getSector().getCampaignUI().addMessage("Difficulty rating for the next battle will be reduced by "
@@ -82,15 +89,18 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
             timeUntilNextDangerUpdate -= amount;
 
-            if(timeUntilNextDangerUpdate <= 0) {
-                updateDangerOfAllFleetsAtPlayerLocation(DANGER_UPDATE_RANGE);
+            if(timeUntilNextDangerUpdate <= 0 || previousLocation != pf.getContainingLocation()) {
+                previousLocation = pf.getContainingLocation();
                 timeUntilNextDangerUpdate += DANGER_UPDATE_PERIOD;
+                updateDangerOfAllFleetsAtPlayerLocation(DANGER_UPDATE_RANGE);
             }
 
             if(Global.getSector().isPaused()) amount = 0;
             else if(Global.getSector().isInFastAdvance()) amount *= 2;
 
             if(!Global.getSector().isPaused()) {
+                timeHasPassedSinceLastEngagement = true;
+
                 float distanceFromCore = pf.getLocation().length() - CORE_RADIUS;
 
                 if (ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE && pf.isInHyperspace() && distanceFromCore > 0) {
@@ -102,8 +112,6 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     distanceToNextEncounter.val = d * 0.5f + random.nextFloat() * d;
                     spawnRemnantFleet(distanceFromCore);
                 }
-
-                ModPlugin.resetIntegrationValues();
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
@@ -198,6 +206,28 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     public static void setPlayerJustRespawned() { playerJustRespawned = true; }
 
     @Override
+    public void reportPlayerEngagement(EngagementResultAPI result) {
+        try {
+            EngagementResultForFleetAPI pf = result.didPlayerWin()
+                    ? result.getWinnerResult()
+                    : result.getLoserResult();
+
+            Map<FleetMemberAPI, Float> playerDeployedFP = new HashMap();
+
+            for(FleetMemberAPI fm : pf.getDeployed()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
+            for(FleetMemberAPI fm : pf.getRetreated()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
+            for(FleetMemberAPI fm : pf.getDisabled()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
+            for(FleetMemberAPI fm : pf.getDestroyed()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
+
+            float deployedStrength = 0;
+
+            for(Float strength : playerDeployedFP.values()) deployedStrength += strength;
+
+            ModPlugin.updatePlayerStrength(deployedStrength);
+        } catch (Exception e) { ModPlugin.reportCrash(e); }
+    }
+
+    @Override
     public boolean isDone() { return false; }
 
     @Override
@@ -205,78 +235,40 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
     @Override
     public void reportBattleFinished(CampaignFleetAPI primaryWinner, BattleAPI battle) {
-        for(CampaignFleetAPI fleet : battle.getBothSides()) updateDangerIfAtPlayerLocation(fleet);
+        try {
+            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
+
+            if(battle.isPlayerInvolved()) {
+                ModPlugin.battlesResolvedSinceLastSave++;
+            }
+
+            for (CampaignFleetAPI fleet : battle.getBothSides()) updateDangerIfAtPlayerLocation(fleet);
+        } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 
     @Override
     public void reportFleetJumped(CampaignFleetAPI fleet, SectorEntityToken from, JumpPointAPI.JumpDestination to) {
-        if(fleet == Global.getSector().getPlayerFleet()) {
-            updateDangerOfAllFleetsAtPlayerLocation();
-        } else updateDangerIfAtPlayerLocation(fleet, to.getDestination().getContainingLocation());
+        try {
+            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
+
+            if(fleet == Global.getSector().getPlayerFleet()) {
+                updateDangerOfAllFleetsAtPlayerLocation();
+            } else updateDangerIfAtPlayerLocation(fleet, to.getDestination().getContainingLocation());
+        } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 
     @Override
     public void reportFleetSpawned(CampaignFleetAPI fleet) {
-        updateDangerIfAtPlayerLocation(fleet);
+        try {
+            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
+
+            updateDangerIfAtPlayerLocation(fleet);
+        } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 
     @Override
     public void reportPlayerClosedMarket(MarketAPI market) {
         updateDangerOfAllFleetsAtPlayerLocation();
-    }
-
-    void updateDangerOfAllFleetsAtPlayerLocation() {
-        updateDangerOfAllFleetsAtPlayerLocation(Float.MAX_VALUE);
-    }
-    void updateDangerOfAllFleetsAtPlayerLocation(float maxDistance) {
-        try {
-            CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
-            pfStrength = BattleListener.tallyShipStrength(pf.getFleetData().getMembersListCopy(), true, false);
-
-            for(CampaignFleetAPI f : Misc.getNearbyFleets(pf, maxDistance)) {
-                if(f != pf) updateDangerIfAtPlayerLocation(f);
-            }
-        } catch (Exception e) {
-            log(e.getMessage());
-        }
-    }
-
-    void updateDangerIfAtPlayerLocation(CampaignFleetAPI fleet) {
-        updateDangerIfAtPlayerLocation(fleet, fleet.getContainingLocation());
-    }
-    void updateDangerIfAtPlayerLocation(CampaignFleetAPI fleet, LocationAPI at) {
-        try {
-            pf = Global.getSector().getPlayerFleet();
-
-            if((fleet.isInCurrentLocation() || at == pf.getContainingLocation()) && fleet != pf) updateDanger(fleet);
-        } catch (Exception e) {
-            log(e.getMessage());
-        }
-    }
-    void updateDanger(CampaignFleetAPI fleet) {
-        //fleet.inflateIfNeeded();
-
-        double strength = BattleListener.tallyShipStrength(fleet.getFleetData().getMembersListCopy(), false, false);
-        double ratio = strength / pfStrength;
-        int danger = 10;
-
-        if(ratio < 0.50) danger = 1;
-        else if(ratio < 0.75) danger = 2;
-        else if(ratio < 1.00) danger = 3;
-        else if(ratio < 1.25) danger = 4;
-        else if(ratio < 1.50) danger = 5;
-        else if(ratio < 2.00) danger = 6;
-        else if(ratio < 3.00) danger = 7;
-        else if(ratio < 4.00) danger = 8;
-        else if(ratio < 5.00) danger = 9;
-
-//                if(ratio < 0.5) danger = 1;
-//                else if(ratio < 1.00) danger = 2;
-//                else if(ratio < 1.50) danger = 3;
-//                else if(ratio < 2.00) danger = 4;
-//                else danger = 5;
-
-        fleet.getMemoryWithoutUpdate().set("$dangerLevelOverride", danger);
     }
 
     @Override
@@ -298,5 +290,59 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                 }
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
+    }
+
+    void updateDangerOfAllFleetsAtPlayerLocation() {
+        updateDangerOfAllFleetsAtPlayerLocation(Float.MAX_VALUE);
+    }
+    void updateDangerOfAllFleetsAtPlayerLocation(float maxDistance) {
+        try {
+            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
+
+            CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
+            pfStrength = ModPlugin.tallyShipStrength(pf.getFleetData().getMembersListCopy());
+
+            for(CampaignFleetAPI f : Misc.getNearbyFleets(pf, maxDistance)) {
+                if(f != pf) updateDangerIfAtPlayerLocation(f);
+            }
+        } catch (Exception e) {
+            log(e.getMessage());
+        }
+    }
+    void updateDangerIfAtPlayerLocation(CampaignFleetAPI fleet) {
+        updateDangerIfAtPlayerLocation(fleet, fleet.getContainingLocation());
+    }
+    void updateDangerIfAtPlayerLocation(CampaignFleetAPI fleet, LocationAPI at) {
+        try {
+            pf = Global.getSector().getPlayerFleet();
+
+            if((fleet.isInCurrentLocation() || at == pf.getContainingLocation()) && fleet != pf) updateDanger(fleet);
+        } catch (Exception e) {
+            log(e.getMessage());
+        }
+    }
+    void updateDanger(CampaignFleetAPI fleet) {
+        double efStrength = ModPlugin.tallyShipStrength(fleet.getFleetData().getMembersListCopy());
+
+        fleet.getMemoryWithoutUpdate().set("$dangerLevelOverride", getDangerStars(pfStrength, efStrength));
+    }
+    static int getDangerStars(double playerStrength, double enemyStrength) {
+        int danger = 10;
+
+        if(playerStrength <= 0) return danger;
+
+        double ratio = enemyStrength / playerStrength;
+
+        if(ratio < 0.50) danger = 1;
+        else if(ratio < 0.75) danger = 2;
+        else if(ratio < 1.00) danger = 3;
+        else if(ratio < 1.25) danger = 4;
+        else if(ratio < 1.50) danger = 5;
+        else if(ratio < 2.00) danger = 6;
+        else if(ratio < 3.00) danger = 7;
+        else if(ratio < 4.00) danger = 8;
+        else if(ratio < 5.00) danger = 9;
+
+        return danger;
     }
 }

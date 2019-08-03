@@ -15,11 +15,4 @@ public class FleetInteractionDialogPlugin extends FleetInteractionDialogPluginIm
 
         BattleListener.setVars(context, this);
     }
-
-    @Override
-    public void optionSelected(String text, Object optionData) {
-        super.optionSelected(text, optionData);
-
-        BattleListener.processSelectedOption(text, optionData);
-    }
 }
