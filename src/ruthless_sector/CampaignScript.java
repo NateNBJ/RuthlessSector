@@ -8,7 +8,6 @@ import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
-import com.fs.starfarer.api.impl.campaign.CoreReputationPlugin;
 import com.fs.starfarer.api.impl.campaign.fleets.FleetFactoryV3;
 import com.fs.starfarer.api.impl.campaign.fleets.FleetParamsV3;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
@@ -23,7 +22,6 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Random;
 
-import com.fs.starfarer.api.util.WeightedRandomPicker;
 import org.lwjgl.util.vector.Vector2f;
 
 public class CampaignScript extends BaseCampaignEventListener implements EveryFrameScript {
@@ -32,6 +30,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     static final float CORE_RADIUS = 16000;
     static final float DANGER_UPDATE_PERIOD = 3; // In seconds
     static final float DANGER_UPDATE_RANGE = 5000;
+    static final float MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE = 0.6f;
     static final int MAX_REMNANT_FLEETS = 3;
 
     static boolean playerJustRespawned = false, timeHasPassedSinceLastEngagement = true;
@@ -105,6 +104,16 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
                 if (ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE && pf.isInHyperspace() && distanceFromCore > 0) {
                     distanceToNextEncounter.val -= amount * pf.getCurrBurnLevel();
+
+                    for(CampaignFleetAPI fleet : remnantFleets.val) {
+                        if(fleet != null && fleet.getCurrentAssignment() != null
+                                && fleet.getCurrentAssignment().getAssignment() == FleetAssignment.HOLD
+                                && Misc.getVisibleFleets(fleet, true).size() > 0) {
+
+                            fleet.clearAssignments();
+                            fleet.addAssignment(FleetAssignment.DEFEND_LOCATION, null, Float.MAX_VALUE);
+                        }
+                    }
                 }
 
                 if (distanceToNextEncounter.val <= 0) {
@@ -120,7 +129,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         CampaignFleetAPI fleet = null;
         float maxCombatPoints = ModPlugin.MAX_HYPERSPACE_REMNANT_STRENGTH,
                 sectorInnerRadius = Global.getSettings().getFloat("sectorHeight") * 0.5f,
-                powerScale = Math.min(1, distanceFromCore / (sectorInnerRadius - CORE_RADIUS));
+                powerScale = Math.min(1, distanceFromCore / (sectorInnerRadius - CORE_RADIUS) / MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE);
 
         log("Spawning remnant fleet with " + (int)(powerScale * 100) + "% of max power");
 
@@ -196,7 +205,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             log("Despawned " + fleet.getName());
         } else {
             final CampaignFleetAPI ffleet = fleet;
-            fleet.addAssignment(FleetAssignment.DEFEND_LOCATION, null, Float.MAX_VALUE, "waiting", new Script() {
+            fleet.addAssignment(FleetAssignment.HOLD, null, Float.MAX_VALUE, "waiting", new Script() {
                 @Override
                 public void run() { }
             });

@@ -3,8 +3,9 @@ package ruthless_sector;
 import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.GameState;
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.ModSpecAPI;
 import com.fs.starfarer.api.campaign.FactionAPI;
-import com.fs.starfarer.api.combat.ShipHullSpecAPI;
+import com.fs.starfarer.api.combat.ShipVariantAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.tutorial.GalatianAcademyStipend;
 import org.json.JSONArray;
@@ -18,10 +19,12 @@ import java.util.*;
 import java.util.List;
 
 public class ModPlugin extends BaseModPlugin {
-    public static final String SETTINGS_PATH = "RUTHLESS_SECTOR_OPTIONS.ini";
-    public static final String FACTION_WL_PATH = "data/config/ruthlesssector/faction_rep_change_whitelist.csv";
-    public static final String FACTION_BL_PATH = "data/config/ruthlesssector/faction_rep_change_blacklist.csv";
-    public static final String COMMON_DATA_PATH = "sun_rs/reload_penalty_record.json";
+    public static final String
+            ID = "sun_ruthless_sector",
+            SETTINGS_PATH = "RUTHLESS_SECTOR_OPTIONS.ini",
+            FACTION_WL_PATH = "data/config/ruthlesssector/faction_rep_change_whitelist.csv",
+            FACTION_BL_PATH = "data/config/ruthlesssector/faction_rep_change_blacklist.csv",
+            COMMON_DATA_PATH = "sun_rs/reload_penalty_record.json";
 
     public static boolean
             ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE = true,
@@ -63,6 +66,59 @@ public class ModPlugin extends BaseModPlugin {
     static boolean settingsAreRead = false, battleStartedSinceLastSave = false;
     static int battlesResolvedSinceLastSave = 0;
     static String saveGameID;
+
+    class Version {
+        public final int MAJOR, MINOR, PATCH, RC;
+
+        public Version(String versionStr) {
+            String[] temp = versionStr.replace("Starsector ", "").replace("a", "").split("-RC");
+
+            RC = temp.length > 1 ? Integer.parseInt(temp[1]) : 0;
+
+            temp = temp[0].split("\\.");
+
+            MAJOR = temp.length > 0 ? Integer.parseInt(temp[0]) : 0;
+            MINOR = temp.length > 1 ? Integer.parseInt(temp[1]) : 0;
+            PATCH = temp.length > 2 ? Integer.parseInt(temp[2]) : 0;
+        }
+
+        public boolean isOlderThan(Version other, boolean ignoreRC) {
+            if(MAJOR < other.MAJOR) return true;
+            if(MINOR < other.MINOR) return true;
+            if(PATCH < other.PATCH) return true;
+            if(!ignoreRC && RC < other.RC) return true;
+
+            return false;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%d.%d.%d%s-RC%d", MAJOR, MINOR, PATCH, (MAJOR >= 1 ? "" : "a"), RC);
+        }
+    }
+
+    @Override
+    public void onApplicationLoad() throws Exception {
+        String message = "";
+
+        try {
+            ModSpecAPI spec = Global.getSettings().getModManager().getModSpec(ID);
+            Version minimumVersion = new Version(spec.getGameVersion());
+            Version currentVersion = new Version(Global.getSettings().getVersionString());
+
+            if(currentVersion.isOlderThan(minimumVersion, false)) {
+                message = String.format("\rThis version of Starsector is too old for %s!" +
+                                "\rPlease make sure Starsector is up to date. (http://fractalsoftworks.com/preorder/)" +
+                                "\rMinimum Version: %s" +
+                                "\rCurrent Version: %s",
+                        spec.getName(), minimumVersion, currentVersion);
+            }
+        } catch (Exception e) {
+            Global.getLogger(this.getClass()).error("Version comparison failed.", e);
+        }
+
+        if(!message.isEmpty()) throw new Exception(message);
+    }
 
     @Override
     public void onGameLoad(boolean newGame) {
@@ -120,7 +176,8 @@ public class ModPlugin extends BaseModPlugin {
                 commonData = new JSONObject(Global.getSettings().readTextFileFromCommon(COMMON_DATA_PATH));
             }
 
-            JSONObject cfg = Global.getSettings().loadJSON(SETTINGS_PATH);
+            //JSONObject cfg = Global.getSettings().loadJSON(SETTINGS_PATH);
+            JSONObject cfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
 
             GalatianAcademyStipend.DURATION = (float)cfg.getDouble("galatianStipendDuration");
             GalatianAcademyStipend.STIPEND = cfg.getInt("galatianStipendPay");
@@ -239,16 +296,24 @@ public class ModPlugin extends BaseModPlugin {
         if(ship.getHullSpec().isCivilianNonCarrier() || ship.isMothballed() || ship.isFighterWing() || ship.isCivilian() || !ship.canBeDeployedForCombat()) {
             return 0;
         } if(ship.isStation()) {
-            int detachedModuleCount = 0;
-            int moduleCount = ship.getVariant().getModuleSlots().size() + 1;
+            ShipVariantAPI variant = ship.getVariant();
+            List<String> slots = variant.getModuleSlots();
+            float totalOP = 0, detachedOP = 0;
 
-            for(int i = 0; i < moduleCount; ++i) {
-                if(ship.getStatus().isPermaDetached(i)) {
-                    ++detachedModuleCount;
+            for(int i = 0; i < slots.size(); ++i) {
+                ShipVariantAPI module = variant.getModuleVariant(slots.get(i));
+                float op = module.getHullSpec().getOrdnancePoints(null);
+
+                totalOP += op;
+
+                if(ship.getStatus().isPermaDetached(i+1)) {
+                    detachedOP += op;
                 }
             }
 
-            if(detachedModuleCount > 0) { strength *= 0.3f; }
+            Global.getLogger(ModPlugin.class).info("total OP: " + totalOP + " detached OP: " + detachedOP);
+
+            strength *= (totalOP - detachedOP) / Math.max(1, totalOP);
         } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
             float dModMult = ship.getBaseDeploymentCostSupplies() > 0
                     ? (ship.getDeploymentCostSupplies() / ship.getBaseDeploymentCostSupplies())
@@ -281,11 +346,17 @@ public class ModPlugin extends BaseModPlugin {
                 : ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
 
         if(ship.getOwner() == 0) {
-            strength *= ModPlugin.PLAYER_FLEET_STRENGTH_MULT;
-            strength *= 1 + ModPlugin.PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL * ship.getFleetCommander().getStats().getLevel();
-        }
+            float commanderLevel = 0;
 
-        //log(strength + " * (1 + " + captainBonus + " + " + admiralBonus + ") = " + (strength * (1 + captainBonus + admiralBonus)) + " : " + ship.getHullId());
+            if(ship.getFleetCommanderForStats() != null && ship.getFleetCommanderForStats().getStats() != null) {
+                commanderLevel = ship.getFleetCommanderForStats().getStats().getLevel();
+            } else if(ship.getOwner() == 0) {
+                commanderLevel = Global.getSector().getPlayerStats().getLevel();
+            }
+
+            strength *= ModPlugin.PLAYER_FLEET_STRENGTH_MULT;
+            strength *= 1 + ModPlugin.PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL * commanderLevel;
+        }
 
         return strength * (1 + captainBonus);
     }
