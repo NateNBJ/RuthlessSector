@@ -67,6 +67,7 @@ public class CampaignPlugin extends BaseCampaignPlugin {
                     }
                 } catch (Exception e) {
                     plugin = new FleetInteractionDialogPlugin();
+                    ModPlugin.reportCrash(e);
                 }
 
                 return new PluginPick<>(plugin, priority);

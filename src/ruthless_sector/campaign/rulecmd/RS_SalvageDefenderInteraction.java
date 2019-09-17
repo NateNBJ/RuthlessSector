@@ -31,7 +31,9 @@ import com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SalvageGenFromSeed.SDM
 import com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SalvageGenFromSeed.SalvageDefenderModificationPlugin;
 import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.Misc.Token;
+import ruthless_sector.ModPlugin;
 import ruthless_sector.campaign.FleetInteractionDialogPlugin;
+import ruthless_sector.CombatPlugin;
 
 public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
 
@@ -72,7 +74,36 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
         config.salvageRandom = Misc.getRandom(seed, 75);
 
 
+
+
+
+        // Line below changed to use FIDP override
         final FleetInteractionDialogPlugin plugin = new FleetInteractionDialogPlugin(config);
+
+        // Block below added
+        {
+            String target = null;
+
+            if(ruleId.contains("Probe")) target = "probe";
+            else if(ruleId.contains("SurveyShip")) target = "survey ship";
+            else if(ruleId.contains("Mothership")) target = "mothership";
+
+
+
+            //Global.getLogger(this.getClass()).info(ruleId + "   " + target);
+
+            if((ModPlugin.MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES > 10 || ModPlugin.RANGE_MULT_FOR_AUTOMATED_DEFENSES > 1)
+                    && target != null) {
+
+                dialog.getTextPanel().addPara("The readings gradually become scrambled as you approach. It seems the " +
+                        target +" has activated an unusually effective ECM and targeting support network.");
+
+                CombatPlugin.setDomainDroneEcmBonusFlag();
+            }
+        }
+
+
+
 
         final InteractionDialogPlugin originalPlugin = dialog.getPlugin();
         config.delegate = new BaseFIDDelegate() {

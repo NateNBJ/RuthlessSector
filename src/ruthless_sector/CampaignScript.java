@@ -27,7 +27,7 @@ import org.lwjgl.util.vector.Vector2f;
 public class CampaignScript extends BaseCampaignEventListener implements EveryFrameScript {
     static void log(String message) { if(true) Global.getLogger(CampaignScript.class).info(message); }
 
-    static final float CORE_RADIUS = 16000;
+    static final float CORE_RADIUS = 18000;
     static final float DANGER_UPDATE_PERIOD = 3; // In seconds
     static final float DANGER_UPDATE_RANGE = 5000;
     static final float MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE = 0.6f;
@@ -111,7 +111,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                                 && Misc.getVisibleFleets(fleet, true).size() > 0) {
 
                             fleet.clearAssignments();
-                            fleet.addAssignment(FleetAssignment.DEFEND_LOCATION, null, Float.MAX_VALUE);
+                            fleet.addAssignment(FleetAssignment.RAID_SYSTEM, null, Float.MAX_VALUE);
                         }
                     }
                 }
@@ -157,7 +157,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     0f, // utilityPts
                     0f // qualityMod
             );
-            params.withOfficers = false;
+            params.withOfficers = true;
             params.random = random;
 
             fleet = FleetFactoryV3.createFleet(params);
@@ -245,10 +245,13 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     @Override
     public void reportBattleFinished(CampaignFleetAPI primaryWinner, BattleAPI battle) {
         try {
+            CombatPlugin.clearDomainDroneEcmBonusFlag();
+
             if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
 
             if(battle.isPlayerInvolved()) {
                 ModPlugin.battlesResolvedSinceLastSave++;
+                //CombatPlugin.clearJammerPenaltyRecord();
             }
 
             for (CampaignFleetAPI fleet : battle.getBothSides()) updateDangerIfAtPlayerLocation(fleet);

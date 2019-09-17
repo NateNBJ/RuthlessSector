@@ -53,7 +53,9 @@ public class ModPlugin extends BaseModPlugin {
             LOOTED_CREDITS_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = 0.5f,
-            RANGE_MULT_FOR_AUTOMATED_DEFENSES = 2.0f;
+            RANGE_MULT_FOR_AUTOMATED_DEFENSES = 1.5f,
+            MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = 25f,
+            FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = 15f;
 
     static List<FactionAPI> allowedFactions = new ArrayList();
     static JSONObject commonData;
@@ -134,6 +136,8 @@ public class ModPlugin extends BaseModPlugin {
 
             Saved.loadPersistentData();
 
+            CombatPlugin.clearDomainDroneEcmBonusFlag();
+
             readSettingsIfNecessary();
         } catch (Exception e) { reportCrash(e); }
     }
@@ -213,7 +217,8 @@ public class ModPlugin extends BaseModPlugin {
             LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = (float)cfg.getDouble("lootedSalvageFromRemnantsMultiplier");
 
             RANGE_MULT_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("rangeMultForAutomatedDefenses");
-
+            MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("maxEcmRatingForAutomatedDefenses");
+            FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("flatEcmBonusForAutomatedDefenses");
 
             Set<String> bl = fetchList(FACTION_BL_PATH);
             Set<String> wl = cfg.getBoolean("restrictRepGainToWhitlistedFactions")
@@ -258,7 +263,8 @@ public class ModPlugin extends BaseModPlugin {
             String stackTrace = "", message = "Ruthless Sector encountered an error!\nPlease let the mod author know.";
 
             for(int i = 0; i < exception.getStackTrace().length; i++) {
-                stackTrace += "    " + exception.getStackTrace()[i].toString() + System.lineSeparator();
+                StackTraceElement ste = exception.getStackTrace()[i];
+                stackTrace += "    " + ste.toString() + System.lineSeparator();
             }
 
             Global.getLogger(ModPlugin.class).error(exception.getMessage() + System.lineSeparator() + stackTrace);
@@ -311,7 +317,7 @@ public class ModPlugin extends BaseModPlugin {
                 }
             }
 
-            Global.getLogger(ModPlugin.class).info("total OP: " + totalOP + " detached OP: " + detachedOP);
+            //Global.getLogger(ModPlugin.class).info("total OP: " + totalOP + " detached OP: " + detachedOP);
 
             strength *= (totalOP - detachedOP) / Math.max(1, totalOP);
         } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
