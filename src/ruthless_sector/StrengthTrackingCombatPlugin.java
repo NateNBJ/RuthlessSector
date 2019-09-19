@@ -6,6 +6,7 @@ import com.fs.starfarer.api.fleet.FleetGoal;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.graphics.SpriteAPI;
 import com.fs.starfarer.api.input.InputEventAPI;
+import com.fs.starfarer.api.mission.FleetSide;
 import com.fs.starfarer.combat.CombatEngine;
 import com.fs.starfarer.combat.CombatFleetManager;
 import org.lwjgl.input.Mouse;
@@ -36,10 +37,11 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
     Map<FleetMemberAPI, Integer> clickCount = new HashMap<>();
     CombatEngineAPI engine;
 
-    float deployedStrength = Float.MIN_VALUE, selectedStrength = 0;
+
+    float deployedStrength = Float.MIN_VALUE, selectedStrength = 0, deployedDP = Float.MIN_VALUE, selectedDP = 0;
     float timeShowingDeployMenu = 0;
     boolean escapeMenuIsOpen = false, mouseDownOverAllBtn = false, playerIsPursuing = false;
-    int mouseX, mouseY;
+    int mouseX, mouseY, limit;
 
     boolean isIrrelevant() { return !ModPlugin.SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN || engine == null
             || !engine.isInCampaign() || engine.isSimulation() || engine.isInCampaignSim(); }
@@ -52,8 +54,9 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
             if (isIrrelevant()) return;
 
-            deployedStrength = Float.MIN_VALUE;
-            selectedStrength = 0;
+            deployedDP = deployedStrength = Float.MIN_VALUE;
+            selectedDP = selectedStrength = 0;
+            limit = engine.getFleetManager(FleetSide.PLAYER).getMaxStrength();
 
             playerIsPursuing = engine.getContext().getOtherGoal() == FleetGoal.ESCAPE;
             ef = CombatEngine.getInstance().getFleetManager(1);
@@ -83,25 +86,28 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
             if(engine.isUIShowingDialog() && !escapeMenuIsOpen && pf.getReservesCopy().size() <= DEFAULT_SHIP_LIMIT) {
                 if(deployedStrength == Float.MIN_VALUE) {
-                    deployedStrength = 0;
+                    deployedDP = deployedStrength = 0;
+                    limit = engine.getFleetManager(FleetSide.PLAYER).getMaxStrength();
 
-                    Map<FleetMemberAPI, Float> playerDeployedFP = new HashMap();
+                    Set<FleetMemberAPI> deployedShips = new HashSet();
 
-                    for(FleetMemberAPI fm : pf.getDeployedCopy()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
-                    for(FleetMemberAPI fm : pf.getRetreated()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
-                    for(FleetMemberAPI fm : pf.getDisabledCopy()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
-                    for(FleetMemberAPI fm : pf.getDestroyed()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
+                    deployedShips.addAll(pf.getDeployedCopy());
+                    deployedShips.addAll(pf.getRetreatedCopy());
+                    deployedShips.addAll(pf.getDisabledCopy());
+                    deployedShips.addAll(pf.getDestroyedCopy());
 
-                    for(Float strength : playerDeployedFP.values()) deployedStrength += strength;
+                    for(FleetMemberAPI ship : deployedShips) deployedStrength += ModPlugin.getShipStrength(ship);
+
+                    for(FleetMemberAPI ship : pf.getDeployedCopy()) deployedDP += ship.getDeploymentPointsCost();
                 }
 
                 render();
 
                 timeShowingDeployMenu += engine.getElapsedInLastFrame();
             } else {
-                deployedStrength = Float.MIN_VALUE;
+                deployedDP = deployedStrength = Float.MIN_VALUE;
+                selectedDP = selectedStrength = 0;
                 timeShowingDeployMenu = 0;
-                selectedStrength = 0;
                 selectedForDeployment.clear();
                 clickCount.clear();
             }
@@ -182,6 +188,10 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
                     FleetMemberAPI fm = getShipUnderCursor();
 
                     if(fm != null) {
+                        float newDP = deployedDP + selectedDP + fm.getDeploymentPointsCost();
+
+                        if(!selectedForDeployment.contains(fm) && newDP > limit) continue;
+
                         if(!clickCount.containsKey(fm)) clickCount.put(fm, 1);
                         else clickCount.put(fm, clickCount.get(fm) + 1);
 
@@ -189,9 +199,11 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
                         if(toggle) {
                             if (selectedForDeployment.contains(fm)) {
+                                selectedDP -= fm.getDeploymentPointsCost();
                                 selectedStrength -= ModPlugin.getShipStrength(fm);
                                 selectedForDeployment.remove(fm);
                             } else {
+                                selectedDP += fm.getDeploymentPointsCost();
                                 selectedStrength += ModPlugin.getShipStrength(fm);
                                 selectedForDeployment.add(fm);
                             }
@@ -210,15 +222,19 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
                     if (selectedForDeployment.size() == pf.getReservesCopy().size()) {
                         selectedForDeployment.clear();
                         clickCount.clear();
-                        selectedStrength = 0;
+                        selectedDP = selectedStrength = 0;
                     } else {
                         boolean noCombatShipsAdded = true;
 
                         for (FleetMemberAPI ship : pf.getReservesCopy()) {
+                            int newDP = (int)(deployedDP + selectedDP + ship.getDeploymentPointsCost());
+
                             if (!selectedForDeployment.contains(ship) && !ship.isCivilian()
-                                    && ship.canBeDeployedForCombat() && !ship.isMothballed()) {
+                                    && ship.canBeDeployedForCombat() && !ship.isMothballed()
+                                    && newDP <= limit) {
 
                                 noCombatShipsAdded = false;
+                                selectedDP += ship.getDeploymentPointsCost();
                                 selectedStrength += ModPlugin.getShipStrength(ship);
                                 selectedForDeployment.add(ship);
                             }
@@ -226,7 +242,10 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
                         if (noCombatShipsAdded) {
                             for (FleetMemberAPI ship : pf.getReservesCopy()) {
-                                if (!selectedForDeployment.contains(ship)) {
+                                int newDP = (int)(deployedDP + selectedDP + ship.getDeploymentPointsCost());
+
+                                if (!selectedForDeployment.contains(ship) && newDP <= limit) {
+                                    selectedDP += ship.getDeploymentPointsCost();
                                     selectedStrength += ModPlugin.getShipStrength(ship);
                                     selectedForDeployment.add(ship);
                                 }
@@ -245,22 +264,4 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
     @Override
     public void renderInUICoords(ViewportAPI viewport) { }
-
-    void drawDebugShip() {
-        FleetMemberAPI ship = getShipUnderCursor();
-
-        //Global.getLogger(this.getClass()).info("isUIShowingDialog");
-
-        if (ship != null) {
-            //Global.getLogger(this.getClass()).info("ship != null");
-
-            SpriteAPI sprite = Global.getSettings().getSprite(ship.getHullSpec().getSpriteName());
-
-            sprite.setWidth(sprite.getWidth() * PIXEL_WIDTH);
-            sprite.setHeight(sprite.getHeight() * PIXEL_HEIGHT);
-
-
-            sprite.render(-0.8f, 0);
-        }
-    }
 }
