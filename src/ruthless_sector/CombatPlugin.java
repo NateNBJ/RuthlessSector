@@ -75,7 +75,7 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
         try {
             CombatEngineAPI engine = Global.getCombatEngine();
 
-            if (engine == null || engine.getShips() == null) return;
+            if (engine == null || engine.getShips() == null || !engine.isInCampaign()) return;
 
             if(timeUntilReaplyEcmBonus != Float.MAX_VALUE && !engine.isPaused()) timeUntilReaplyEcmBonus -= amount;
 
@@ -83,7 +83,7 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
 
                 timeUntilReaplyEcmBonus = 5;
 
-                Global.getLogger(this.getClass()).info("reaply");
+                //Global.getLogger(this.getClass()).info("reaply");
 
                 if(totalStandardRating == 0) {
                     for (ShipAPI ship : engine.getShips()) {
@@ -91,10 +91,14 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                             totalStandardRating += ElectronicWarfare.getBase(ship.getHullSize());
                         }
                     }
+
+
+                    //Global.getLogger(this.getClass()).info("totalStandardRating: " + totalStandardRating);
                 }
 
                 for(ShipAPI ship : engine.getShips()) {
-                    if(ship.getHullSpec().hasTag("derelict") && ship.getOriginalOwner() == 1) {
+                    if(ship.getOriginalOwner() == 1) {
+                    //    if(ship.getHullSpec().hasTag("derelict") && ship.getOriginalOwner() == 1) {
                         MutableShipStatsAPI stats = ship.getMutableStats();
                         float bonus = ElectronicWarfare.getBase(ship.getHullSize());
                         bonus += ModPlugin.FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES * (bonus / totalStandardRating);
@@ -103,6 +107,9 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                         stats.getBallisticWeaponRangeBonus().modifyMult(ECM_ID, ModPlugin.RANGE_MULT_FOR_AUTOMATED_DEFENSES);
                         stats.getEnergyWeaponRangeBonus().modifyMult(ECM_ID, ModPlugin.RANGE_MULT_FOR_AUTOMATED_DEFENSES);
                         stats.getMissileWeaponRangeBonus().modifyMult(ECM_ID, ModPlugin.RANGE_MULT_FOR_AUTOMATED_DEFENSES);
+
+
+                        //Global.getLogger(this.getClass()).info("tags: " + ship.getHullSpec().getTags());
                     }
                 }
 
