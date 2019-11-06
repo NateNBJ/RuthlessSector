@@ -15,7 +15,5 @@ public class SwpCompatibleFleetInteractionDialogPlugin extends FleetInteractionD
         Global.getLogger(SwpCompatibleFleetInteractionDialogPlugin.class).info("SwpCompatibleFleetInteractionDialogPlugin chosen");
 
         context = new SwpCompatibleFeetEncounterContext();
-
-        BattleListener.setVars(context, this);
     }
 }

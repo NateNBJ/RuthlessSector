@@ -12,7 +12,5 @@ public class FleetInteractionDialogPlugin extends FleetInteractionDialogPluginIm
         super(params);
 
         context = new FleetEncounterContext();
-
-        BattleListener.setVars(context, this);
     }
 }

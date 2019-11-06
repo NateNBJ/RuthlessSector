@@ -5,6 +5,7 @@ import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.Script;
 import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
+import com.fs.starfarer.api.characters.AbilityPlugin;
 import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Random;
 
 import org.lwjgl.util.vector.Vector2f;
+import hyperdrive.campaign.abilities.HyperdriveAbility;
 
 public class CampaignScript extends BaseCampaignEventListener implements EveryFrameScript {
     static void log(String message) { if(true) Global.getLogger(CampaignScript.class).info(message); }
@@ -125,7 +127,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 
-    void spawnRemnantFleet(float distanceFromCore) {
+    CampaignFleetAPI spawnRemnantFleet(float distanceFromCore) {
         CampaignFleetAPI fleet = null;
         float maxCombatPoints = ModPlugin.MAX_HYPERSPACE_REMNANT_STRENGTH,
                 sectorInnerRadius = Global.getSettings().getFloat("sectorHeight") * 0.5f,
@@ -173,9 +175,11 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_NO_JUMP, false);
         fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_ALLOW_LONG_PURSUIT, false);
         fleet.setFacing(random.nextFloat() * 360f);
-        despawnOrResetAssignment(fleet);
+        fleet.addAssignment(FleetAssignment.HOLD, null, Float.MAX_VALUE, "waiting");
 
         fleet.setTransponderOn(true);
+
+        return fleet;
     }
 
     void purgeOldestRemnantFleetsIfNeeded() {
@@ -302,6 +306,36 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                 }
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
+    }
+
+    @Override
+    public void reportPlayerActivatedAbility(AbilityPlugin ability, Object param) {
+        super.reportPlayerActivatedAbility(ability, param);
+
+        if(ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE
+                && (pf != null && pf.isInHyperspace())
+                && Global.getSettings().getModManager().isModEnabled("sun_hyperdrive")
+                && ability.getId().equals("sun_hd_hyperdrive")
+                && Math.random() < (600f / ModPlugin.AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS)) {
+
+            HyperdriveAbility wd = (HyperdriveAbility)ability;
+            Vector2f at = new Vector2f(wd.getDestinationToken().getLocation());
+            Vector2f lead = Misc.getUnitVectorAtDegreeAngle(pf.getFacing());
+            lead.scale(2500);
+            Vector2f.add(at, lead, at);
+            float distanceFromCore = at.length() - CORE_RADIUS;
+
+            if(distanceFromCore > 0) {
+                CampaignFleetAPI rf = spawnRemnantFleet(distanceFromCore);
+
+                at = Misc.getPointAtRadius(at, 3500);
+
+                rf.setLocation(at.x, at.y);
+
+                rf.clearAssignments();
+                rf.addAssignment(FleetAssignment.RAID_SYSTEM, null, Float.MAX_VALUE);
+            }
+        }
     }
 
     void updateDangerOfAllFleetsAtPlayerLocation() {

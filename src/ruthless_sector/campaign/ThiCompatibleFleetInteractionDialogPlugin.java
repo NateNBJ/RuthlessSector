@@ -11,7 +11,5 @@ public class ThiCompatibleFleetInteractionDialogPlugin extends TiandongFleetInte
         Global.getLogger(ThiCompatibleFleetInteractionDialogPlugin.class).info("ThiCompatibleFleetInteractionDialogPlugin chosen");
 
         context = new FleetEncounterContext();
-
-        BattleListener.setVars(context, this);
     }
 }

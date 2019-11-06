@@ -40,7 +40,8 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
     float deployedStrength = Float.MIN_VALUE, selectedStrength = 0, deployedDP = Float.MIN_VALUE, selectedDP = 0;
     float timeShowingDeployMenu = 0;
-    boolean escapeMenuIsOpen = false, mouseDownOverAllBtn = false, playerIsPursuing = false;
+    boolean escapeMenuIsOpen = false, mouseDownOverAllBtn = false, playerIsPursuing = false,
+            noMothballedShipsAreReserved = true;
     int mouseX, mouseY, limit;
 
     boolean isIrrelevant() { return !ModPlugin.SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN || engine == null
@@ -99,6 +100,15 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
                     for(FleetMemberAPI ship : deployedShips) deployedStrength += ModPlugin.getShipStrength(ship);
 
                     for(FleetMemberAPI ship : pf.getDeployedCopy()) deployedDP += ship.getDeploymentPointsCost();
+
+                    noMothballedShipsAreReserved = true;
+
+                    for(FleetMemberAPI ship : pf.getCampaignFleet().getMembers()) {
+                        if(ship.isMothballed()) {
+                            noMothballedShipsAreReserved = false;
+                            break;
+                        }
+                    }
                 }
 
                 render();
@@ -178,11 +188,6 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
             for (InputEventAPI e : events) {
                 if (e.isConsumed()) continue;
-//            if(e.isMouseDownEvent()) {
-//                Global.getLogger(this.getClass()).info("DOWN - X: " + mouseX + "  Y: " + mouseY + "  Button: " + e.getEventValue());
-//            } else if(e.isMouseUpEvent()) {
-//                Global.getLogger(this.getClass()).info("UP - X: " + mouseX + "  Y: " + mouseY + "  Button: " + e.getEventValue());
-//            }
 
                 if (e.isMouseDownEvent()) {
                     FleetMemberAPI fm = getShipUnderCursor();
@@ -219,7 +224,7 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
             if (!Mouse.isButtonDown(0)) { // Mouse up event is consumed at the end of a button press
                 if (mouseDownOverAllBtn && mouseIsOverAllButton()) {
-                    if (selectedForDeployment.size() == pf.getReservesCopy().size()) {
+                    if (selectedForDeployment.size() == pf.getReservesCopy().size() && noMothballedShipsAreReserved) {
                         selectedForDeployment.clear();
                         clickCount.clear();
                         selectedDP = selectedStrength = 0;

@@ -15,18 +15,9 @@ public class BattleListener {
     static void log(String message) { if(true) Global.getLogger(BattleListener.class).info(message); }
 
     static boolean battleInvolvesRemnants = false;
-    static BattleAPI battle;
-    static FleetEncounterContext context;
-    static com.fs.starfarer.api.campaign.InteractionDialogPlugin dialog;
-
-    public static void setVars(FleetEncounterContext context, com.fs.starfarer.api.campaign.InteractionDialogPlugin dialog) {
-        BattleListener.context = context;
-        BattleListener.dialog = dialog;
-    }
 
     public static void setBattle(BattleAPI battle) {
         try {
-            BattleListener.battle = battle;
             battleInvolvesRemnants = false;
 
             if(battle == null || battle.getBothSides() == null) return;

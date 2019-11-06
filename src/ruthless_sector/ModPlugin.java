@@ -4,6 +4,7 @@ import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.GameState;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.ModSpecAPI;
+import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.FactionAPI;
 import com.fs.starfarer.api.combat.ShipVariantAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
@@ -273,10 +274,13 @@ public class ModPlugin extends BaseModPlugin {
                 Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
                 Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
             } else if (Global.getSector() != null) {
-                Global.getSector().getCampaignUI().addMessage(message, Color.RED);
-                Global.getSector().getCampaignUI().addMessage(exception.getMessage(), Color.ORANGE);
-                Global.getSector().getCampaignUI().showConfirmDialog(message + "\n\n"
-                        + exception.getMessage(), "Ok", null, null, null);
+                CampaignUIAPI ui = Global.getSector().getCampaignUI();
+
+                ui.addMessage(message, Color.RED);
+                ui.addMessage(exception.getMessage(), Color.ORANGE);
+                ui.showConfirmDialog(message + "\n\n" + exception.getMessage(), "Ok", null, null, null);
+
+                if(ui.getCurrentInteractionDialog() != null) ui.getCurrentInteractionDialog().dismiss();
             } else return false;
 
             return true;
