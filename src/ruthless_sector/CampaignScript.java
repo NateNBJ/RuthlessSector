@@ -4,36 +4,33 @@ import com.fs.starfarer.api.EveryFrameScript;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.Script;
 import com.fs.starfarer.api.campaign.*;
-import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.characters.AbilityPlugin;
 import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
+import com.fs.starfarer.api.combat.ViewportAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.fleets.FleetFactoryV3;
 import com.fs.starfarer.api.impl.campaign.fleets.FleetParamsV3;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
 import com.fs.starfarer.api.impl.campaign.ids.FleetTypes;
 import com.fs.starfarer.api.impl.campaign.ids.MemFlags;
+import com.fs.starfarer.api.impl.campaign.intel.FactionCommissionIntel;
 import com.fs.starfarer.api.impl.campaign.intel.MessageIntel;
 import com.fs.starfarer.api.impl.campaign.procgen.themes.RemnantSeededFleetManager;
 import com.fs.starfarer.api.util.Misc;
 
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 
+import org.lwjgl.input.Mouse;
 import org.lwjgl.util.vector.Vector2f;
 import hyperdrive.campaign.abilities.HyperdriveAbility;
 
 public class CampaignScript extends BaseCampaignEventListener implements EveryFrameScript {
     static void log(String message) { if(true) Global.getLogger(CampaignScript.class).info(message); }
 
-    static final float CORE_RADIUS = 18000;
-    static final float DANGER_UPDATE_PERIOD = 3; // In seconds
-    static final float DANGER_UPDATE_RANGE = 5000;
-    static final float MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE = 0.6f;
-    static final int MAX_REMNANT_FLEETS = 3;
+    static final float CORE_RADIUS = 22000;
+    static final float MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE = 0.5f;
+    static final int MAX_REMNANT_FLEETS = 6;
 
     static boolean playerJustRespawned = false, timeHasPassedSinceLastEngagement = true;
 
@@ -41,9 +38,8 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     Saved<LinkedList<CampaignFleetAPI>> remnantFleets = new Saved<>("remnantFleets", new LinkedList<CampaignFleetAPI>());
 
     CampaignFleetAPI pf;
-    LocationAPI previousLocation = null;
     Random random = new Random();
-    float messageDelay = 0.5f, timeUntilNextDangerUpdate = DANGER_UPDATE_PERIOD * 0.5695f;
+    float messageDelay = 0.5f;
     double pfStrength;
 
     public CampaignScript() { super(true); }
@@ -57,6 +53,24 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
             if(pf == null) return;
 
+            pfStrength = ModPlugin.tallyShipStrength(pf.getFleetData().getMembersListCopy());
+
+            if(ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) {
+                final ViewportAPI view = Global.getSector().getViewport();
+                final Vector2f target = new Vector2f(view.convertScreenXToWorldX(Mouse.getX()),
+                        view.convertScreenYToWorldY(Mouse.getY()));
+
+                for (CampaignFleetAPI flt : Misc.getVisibleFleets(Global.getSector().getPlayerFleet(), true)) {
+                    if (Misc.getDistance(target, flt.getLocation()) < flt.getRadius()) {
+                        flt.inflateIfNeeded();
+
+                        double efStrength = ModPlugin.tallyShipStrength(flt.getFleetData().getMembersListCopy());
+
+                        flt.getMemoryWithoutUpdate().set("$dangerLevelOverride", getDangerStars(pfStrength, efStrength));
+                    }
+                }
+            }
+
             if(messageDelay != Float.MIN_VALUE && (messageDelay -= amount) <= 0) {
                 double penalty = ModPlugin.getReloadPenalty();
 
@@ -66,8 +80,6 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     Global.getSector().getCampaignUI().addMessage("Difficulty rating for the next battle will be reduced by "
                             + Misc.getRoundedValue((float) penalty * 100) + "% due to reloading after battle.", Misc.getNegativeHighlightColor());
                 }
-
-                updateDangerOfAllFleetsAtPlayerLocation();
 
                 messageDelay = Float.MIN_VALUE;
             }
@@ -86,14 +98,6 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     }
                 }
                 playerJustRespawned = false;
-            }
-
-            timeUntilNextDangerUpdate -= amount;
-
-            if(timeUntilNextDangerUpdate <= 0 || previousLocation != pf.getContainingLocation()) {
-                previousLocation = pf.getContainingLocation();
-                timeUntilNextDangerUpdate += DANGER_UPDATE_PERIOD;
-                updateDangerOfAllFleetsAtPlayerLocation(DANGER_UPDATE_RANGE);
             }
 
             if(Global.getSector().isPaused()) amount = 0;
@@ -121,65 +125,70 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                 if (distanceToNextEncounter.val <= 0) {
                     float d = ModPlugin.AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS;
                     distanceToNextEncounter.val = d * 0.5f + random.nextFloat() * d;
-                    spawnRemnantFleet(distanceFromCore);
+                    Vector2f loc = new Vector2f(pf.getLocation());
+                    Vector2f.add(loc, (Vector2f) pf.getVelocity().normalise().scale(2800), loc);
+                    spawnRemnantFleets(distanceFromCore, loc, 800f, false);
                 }
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 
-    CampaignFleetAPI spawnRemnantFleet(float distanceFromCore) {
-        CampaignFleetAPI fleet = null;
+    void spawnRemnantFleets(float distanceFromCore, Vector2f loc, float variationRadius, boolean isAlerted) {
         float maxCombatPoints = ModPlugin.MAX_HYPERSPACE_REMNANT_STRENGTH,
                 sectorInnerRadius = Global.getSettings().getFloat("sectorHeight") * 0.5f,
                 powerScale = Math.min(1, distanceFromCore / (sectorInnerRadius - CORE_RADIUS) / MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE);
 
-        log("Spawning remnant fleet with " + (int)(powerScale * 100) + "% of max power");
+        log("Spawning remnant fleets with " + (int)(powerScale * 100) + "% of max power");
 
         purgeOldestRemnantFleetsIfNeeded();
 
-        while(fleet == null) {
-            int combatPoints = 1 + random.nextInt((int)Math.max(1, maxCombatPoints * powerScale));
+        do {
+            CampaignFleetAPI fleet = null;
 
-            String type = FleetTypes.PATROL_SMALL;
-            if (combatPoints > 8) type = FleetTypes.PATROL_MEDIUM;
-            if (combatPoints > 16) type = FleetTypes.PATROL_LARGE;
+            while (fleet == null) {
+                int combatPoints = 1 + random.nextInt((int) Math.max(1, maxCombatPoints * powerScale));
 
-            combatPoints *= 8f; // 8 is fp cost of remnant frigate
+                String type = FleetTypes.PATROL_SMALL;
+                if (combatPoints > 8) type = FleetTypes.PATROL_MEDIUM;
+                if (combatPoints > 16) type = FleetTypes.PATROL_LARGE;
 
-            FleetParamsV3 params = new FleetParamsV3(
-                    pf.getLocation(),
-                    Factions.REMNANTS,
-                    1f,
-                    type,
-                    combatPoints, // combatPts
-                    0f, // freighterPts
-                    0f, // tankerPts
-                    0f, // transportPts
-                    0f, // linerPts
-                    0f, // utilityPts
-                    0f // qualityMod
-            );
-            params.withOfficers = true;
-            params.random = random;
+                combatPoints *= 8f; // 8 is fp cost of remnant frigate
 
-            fleet = FleetFactoryV3.createFleet(params);
-        }
+                FleetParamsV3 params = new FleetParamsV3(
+                        pf.getLocation(),
+                        Factions.REMNANTS,
+                        1f,
+                        type,
+                        combatPoints, // combatPts
+                        0f, // freighterPts
+                        0f, // tankerPts
+                        0f, // transportPts
+                        0f, // linerPts
+                        0f, // utilityPts
+                        0f // qualityMod
+                );
+                params.withOfficers = true;
+                params.random = random;
 
-        remnantFleets.val.add(fleet);
-        pf.getContainingLocation().addEntity(fleet);
-        RemnantSeededFleetManager.initRemnantFleetProperties(random, fleet, false);
-        Vector2f loc = new Vector2f(pf.getLocation());
-        Vector2f.add(loc, (Vector2f) pf.getVelocity().normalise().scale(2800), loc);
-        Vector2f.add(loc, Misc.getPointAtRadius(new Vector2f(), 800f, random), loc);
-        fleet.setLocation(loc.x, loc.y);
-        fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_NO_JUMP, false);
-        fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_ALLOW_LONG_PURSUIT, false);
-        fleet.setFacing(random.nextFloat() * 360f);
-        fleet.addAssignment(FleetAssignment.HOLD, null, Float.MAX_VALUE, "waiting");
+                fleet = FleetFactoryV3.createFleet(params);
+            }
 
-        fleet.setTransponderOn(true);
+            remnantFleets.val.add(fleet);
+            pf.getContainingLocation().addEntity(fleet);
+            RemnantSeededFleetManager.initRemnantFleetProperties(random, fleet, false);
+            Vector2f.add(loc, Misc.getPointAtRadius(new Vector2f(), variationRadius, random), loc);
+            fleet.setLocation(loc.x, loc.y);
+            fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_NO_JUMP, false);
+            fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_ALLOW_LONG_PURSUIT, true);
+            fleet.setFacing(random.nextFloat() * 360f);
+//        fleet.getStats().getSensorStrengthMod().modifyMult("sun_rs_remnant_sensor_bonus", 2);
 
-        return fleet;
+            if (isAlerted) fleet.addAssignment(FleetAssignment.RAID_SYSTEM, null, Float.MAX_VALUE);
+            else fleet.addAssignment(FleetAssignment.HOLD, null, Float.MAX_VALUE, "laying in wait");
+
+            fleet.setTransponderOn(true);
+        } while (random.nextFloat() < ModPlugin.CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS
+                && remnantFleets.val.size() < MAX_REMNANT_FLEETS);
     }
 
     void purgeOldestRemnantFleetsIfNeeded() {
@@ -244,47 +253,45 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     public boolean isDone() { return false; }
 
     @Override
-    public boolean runWhilePaused() { return !ModPlugin.settingsAreRead || messageDelay > 0; }
+    public boolean runWhilePaused() { return true; }
 
     @Override
     public void reportBattleFinished(CampaignFleetAPI primaryWinner, BattleAPI battle) {
         try {
-            CombatPlugin.clearDomainDroneEcmBonusFlag();
-
-            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
-
             if(battle.isPlayerInvolved()) {
+                CombatPlugin.clearDomainDroneEcmBonusFlag();
                 ModPlugin.battlesResolvedSinceLastSave++;
-                //CombatPlugin.clearJammerPenaltyRecord();
+            }
+        } catch (Exception e) { ModPlugin.reportCrash(e); }
+    }
+
+    @Override
+    public void reportBattleOccurred(CampaignFleetAPI primaryWinner, BattleAPI battle) {
+        // Commission bounties aren't actually payed in Starsector 0.9.1-RC10 in spite of the notification. This fixes that.
+        // TODO - Remove this once the bug is fixed
+
+        FactionCommissionIntel intel = Misc.getCommissionIntel();
+
+        if (intel == null || intel.isEnded() || intel.isEnding()) return;
+
+        if (!battle.isPlayerInvolved()) return;
+
+        int payment = 0;
+        for (CampaignFleetAPI otherFleet : battle.getNonPlayerSideSnapshot()) {
+            if (!intel.getFactionForUIColors().isHostileTo(otherFleet.getFaction())) continue;
+
+            float bounty = 0;
+            for (FleetMemberAPI loss : Misc.getSnapshotMembersLost(otherFleet)) {
+                float mult = Misc.getSizeNum(loss.getHullSpec().getHullSize());
+                bounty += mult * Global.getSettings().getFloat("factionCommissionBounty");
             }
 
-            for (CampaignFleetAPI fleet : battle.getBothSides()) updateDangerIfAtPlayerLocation(fleet);
-        } catch (Exception e) { ModPlugin.reportCrash(e); }
-    }
+            payment += (int) (bounty * battle.getPlayerInvolvementFraction());
+        }
 
-    @Override
-    public void reportFleetJumped(CampaignFleetAPI fleet, SectorEntityToken from, JumpPointAPI.JumpDestination to) {
-        try {
-            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
-
-            if(fleet == Global.getSector().getPlayerFleet()) {
-                updateDangerOfAllFleetsAtPlayerLocation();
-            } else updateDangerIfAtPlayerLocation(fleet, to.getDestination().getContainingLocation());
-        } catch (Exception e) { ModPlugin.reportCrash(e); }
-    }
-
-    @Override
-    public void reportFleetSpawned(CampaignFleetAPI fleet) {
-        try {
-            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
-
-            updateDangerIfAtPlayerLocation(fleet);
-        } catch (Exception e) { ModPlugin.reportCrash(e); }
-    }
-
-    @Override
-    public void reportPlayerClosedMarket(MarketAPI market) {
-        updateDangerOfAllFleetsAtPlayerLocation();
+        if (payment > 0) {
+            Global.getSector().getPlayerFleet().getCargo().getCredits().add(payment);
+        }
     }
 
     @Override
@@ -312,6 +319,13 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     public void reportPlayerActivatedAbility(AbilityPlugin ability, Object param) {
         super.reportPlayerActivatedAbility(ability, param);
 
+
+//        float dfc = pf.getLocation().length() - CORE_RADIUS;
+//        float sectorInnerRadius = Global.getSettings().getFloat("sectorHeight") * 0.5f,
+//                powerScale = Math.min(1, dfc / (sectorInnerRadius - CORE_RADIUS) / MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE);
+//
+//        Global.getSector().getCampaignUI().addMessage("Power Scale: " + (int)(powerScale * 100) + "%");
+
         if(ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE
                 && (pf != null && pf.isInHyperspace())
                 && Global.getSettings().getModManager().isModEnabled("sun_hyperdrive")
@@ -326,52 +340,13 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             float distanceFromCore = at.length() - CORE_RADIUS;
 
             if(distanceFromCore > 0) {
-                CampaignFleetAPI rf = spawnRemnantFleet(distanceFromCore);
-
                 at = Misc.getPointAtRadius(at, 3500);
 
-                rf.setLocation(at.x, at.y);
-
-                rf.clearAssignments();
-                rf.addAssignment(FleetAssignment.RAID_SYSTEM, null, Float.MAX_VALUE);
+                spawnRemnantFleets(distanceFromCore, at, 250, true);
             }
         }
     }
 
-    void updateDangerOfAllFleetsAtPlayerLocation() {
-        updateDangerOfAllFleetsAtPlayerLocation(Float.MAX_VALUE);
-    }
-    void updateDangerOfAllFleetsAtPlayerLocation(float maxDistance) {
-        try {
-            if(!ModPlugin.OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY) return;
-
-            CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
-            pfStrength = ModPlugin.tallyShipStrength(pf.getFleetData().getMembersListCopy());
-
-            for(CampaignFleetAPI f : Misc.getNearbyFleets(pf, maxDistance)) {
-                if(f != pf) updateDangerIfAtPlayerLocation(f);
-            }
-        } catch (Exception e) {
-            log(e.getMessage());
-        }
-    }
-    void updateDangerIfAtPlayerLocation(CampaignFleetAPI fleet) {
-        updateDangerIfAtPlayerLocation(fleet, fleet.getContainingLocation());
-    }
-    void updateDangerIfAtPlayerLocation(CampaignFleetAPI fleet, LocationAPI at) {
-        try {
-            pf = Global.getSector().getPlayerFleet();
-
-            if((fleet.isInCurrentLocation() || at == pf.getContainingLocation()) && fleet != pf) updateDanger(fleet);
-        } catch (Exception e) {
-            log(e.getMessage());
-        }
-    }
-    void updateDanger(CampaignFleetAPI fleet) {
-        double efStrength = ModPlugin.tallyShipStrength(fleet.getFleetData().getMembersListCopy());
-
-        fleet.getMemoryWithoutUpdate().set("$dangerLevelOverride", getDangerStars(pfStrength, efStrength));
-    }
     static int getDangerStars(double playerStrength, double enemyStrength) {
         int danger = 10;
 

@@ -172,8 +172,6 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
             sprite.render(x, y);
         }
-
-        //drawDebugShip();
     }
 
     @Override

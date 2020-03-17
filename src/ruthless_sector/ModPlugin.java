@@ -44,8 +44,9 @@ public class ModPlugin extends BaseModPlugin {
             MAX_HYPERSPACE_REMNANT_STRENGTH = 20,
             MAX_REP_GAIN = 5,
             RELOAD_PENALTY_PER_RELOAD = 0.2f,
-            RELOAD_PENALTY_LIMIT = 1,
+            RELOAD_PENALTY_LIMIT = 0.8f,
             RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE = 1.0f,
+            RELOAD_PENALTY_REDUCTION_PER_DAY = 0.02f,
             ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
             ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
             PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = 0.02f,
@@ -56,7 +57,8 @@ public class ModPlugin extends BaseModPlugin {
             LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = 0.5f,
             RANGE_MULT_FOR_AUTOMATED_DEFENSES = 1.5f,
             MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = 25f,
-            FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = 15f;
+            FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = 15f,
+            CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = 0.4f;
 
     static List<FactionAPI> allowedFactions = new ArrayList();
     static JSONObject commonData;
@@ -68,6 +70,7 @@ public class ModPlugin extends BaseModPlugin {
     static CampaignScript script;
     static boolean settingsAreRead = false, battleStartedSinceLastSave = false;
     static int battlesResolvedSinceLastSave = 0;
+    static long timeOfLastSave = 0;
     static String saveGameID;
 
     class Version {
@@ -127,13 +130,12 @@ public class ModPlugin extends BaseModPlugin {
     public void onGameLoad(boolean newGame) {
         try {
             battlesResolvedSinceLastSave = 0;
+            timeOfLastSave = Global.getSector().getClock().getTimestamp();
             battleStartedSinceLastSave = false;
             saveGameID = Global.getSector().getPlayerPerson().getId();
 
             Global.getSector().registerPlugin(new CampaignPlugin());
             Global.getSector().addTransientScript(script = new CampaignScript());
-
-            script.updateDangerOfAllFleetsAtPlayerLocation();
 
             Saved.loadPersistentData();
 
@@ -151,9 +153,12 @@ public class ModPlugin extends BaseModPlugin {
             Global.getSector().removeListener(script);
             Global.getSector().removeScriptsOfClass(CampaignScript.class);
 
-            if(battlesResolvedSinceLastSave > 0) {
-                adjustReloadPenalty(-RELOAD_PENALTY_PER_RELOAD - battlesResolvedSinceLastSave * RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE );
+            if(battlesResolvedSinceLastSave > 0 || Global.getSector().getClock().getElapsedDaysSince(timeOfLastSave) > 0) {
+                adjustReloadPenalty((battlesResolvedSinceLastSave > 0 ? -RELOAD_PENALTY_PER_RELOAD : 0)
+                        - battlesResolvedSinceLastSave * RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE
+                        - Global.getSector().getClock().getElapsedDaysSince(timeOfLastSave) * RELOAD_PENALTY_REDUCTION_PER_DAY);
                 battlesResolvedSinceLastSave = 0;
+                timeOfLastSave = Global.getSector().getClock().getTimestamp();
             }
 
             battleStartedSinceLastSave = false;
@@ -164,8 +169,6 @@ public class ModPlugin extends BaseModPlugin {
     @Override
     public void afterGameSave() {
         Global.getSector().addTransientScript(script = new CampaignScript());
-
-        script.updateDangerOfAllFleetsAtPlayerLocation();
 
         Saved.loadPersistentData(); // Because script attributes will be reset
     }
@@ -181,7 +184,6 @@ public class ModPlugin extends BaseModPlugin {
                 commonData = new JSONObject(Global.getSettings().readTextFileFromCommon(COMMON_DATA_PATH));
             }
 
-            //JSONObject cfg = Global.getSettings().loadJSON(SETTINGS_PATH);
             JSONObject cfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
 
             GalatianAcademyStipend.DURATION = (float)cfg.getDouble("galatianStipendDuration");
@@ -201,10 +203,12 @@ public class ModPlugin extends BaseModPlugin {
             AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = (float)cfg.getDouble("averageDistanceBetweenRemnantEncounters");
             MAX_HYPERSPACE_REMNANT_STRENGTH = (float)cfg.getDouble("maxHyperspaceRemnantStrength");
             MAX_REP_GAIN = (float)cfg.getDouble("maxRepGain");
+            CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = (float)cfg.getDouble("chanceOfAdditionalHyperspaceRemnantFleets");
 
             RELOAD_PENALTY_PER_RELOAD = (float)cfg.getDouble("reloadPenaltyPerReload");
             RELOAD_PENALTY_LIMIT = (float)cfg.getDouble("reloadPenaltyLimit");
             RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE = (float)cfg.getDouble("reloadPenaltyReductionPerResolvedBattle");
+            RELOAD_PENALTY_REDUCTION_PER_DAY = (float)cfg.getDouble("reloadPenaltyReductionPerDay");
 
             DIFFICULTY_MULTIPLIER_EXPONENT = (float)cfg.getDouble("battleDifficultyExponent");
             ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = (float)cfg.getDouble("enemyOfficerIncreaseToShipStrengthPerLevel");
@@ -321,8 +325,6 @@ public class ModPlugin extends BaseModPlugin {
                 }
             }
 
-            //Global.getLogger(ModPlugin.class).info("total OP: " + totalOP + " detached OP: " + detachedOP);
-
             strength *= (totalOP - detachedOP) / Math.max(1, totalOP);
         } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
             float dModMult = ship.getBaseDeploymentCostSupplies() > 0
@@ -333,24 +335,6 @@ public class ModPlugin extends BaseModPlugin {
         } else{
             strength = ship.getDeploymentCostSupplies();
         }
-
-//        if(!slots.isEmpty()) {
-//            int allOP = 0, detachedOP = 0;
-//
-//            for(int i = 0; i < slots.size(); ++i) {
-//                String moduleID = ship.getVariant().getStationModules().get(slots.get(i));
-//                Global.getLogger(ModPlugin.class).info(moduleID + " Detached: " + ship.getStatus().isPermaDetached(i));
-//                int op = Global.getSettings().getVariant(moduleID).getHullSpec().getOrdnancePoints(ship.getCaptain().getStats());
-//
-//                //Global.getLogger(ModPlugin.class).info(moduleID + " OP: " + op + " Detached: " + ship.getStatus().isPermaDetached(i));
-//
-//                allOP += op;
-//
-//                if(ship.getStatus().isPermaDetached(i)) detachedOP += op;
-//            }
-//
-//            strength *= allOP == 0 ? 1 : detachedOP / allOP;
-//        }
 
         float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
                 : ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
@@ -409,7 +393,8 @@ public class ModPlugin extends BaseModPlugin {
         double penalty = commonData.has(saveGameID) ? commonData.getDouble(saveGameID) : 0;
 
         // Account for unsaved penalty reductions
-        penalty -= (battlesResolvedSinceLastSave * RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE);
+        penalty -= battlesResolvedSinceLastSave * RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE;
+        penalty -= Global.getSector().getClock().getElapsedDaysSince(timeOfLastSave) * RELOAD_PENALTY_REDUCTION_PER_DAY;
 
         // Compensate for preemptive penalty increase at start of first battle of game session
         penalty -= battleStartedSinceLastSave ? ModPlugin.RELOAD_PENALTY_PER_RELOAD : 0;
