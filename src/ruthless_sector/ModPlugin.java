@@ -59,6 +59,8 @@ public class ModPlugin extends BaseModPlugin {
             MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = 25f,
             FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = 15f,
             CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = 0.4f;
+    public static int
+            MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = 3;
 
     static List<FactionAPI> allowedFactions = new ArrayList();
     static JSONObject commonData;
@@ -204,6 +206,7 @@ public class ModPlugin extends BaseModPlugin {
             MAX_HYPERSPACE_REMNANT_STRENGTH = (float)cfg.getDouble("maxHyperspaceRemnantStrength");
             MAX_REP_GAIN = (float)cfg.getDouble("maxRepGain");
             CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = (float)cfg.getDouble("chanceOfAdditionalHyperspaceRemnantFleets");
+            MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = cfg.getInt("maxHyperspaceRemnantFleetsToSpawnAtOnce");
 
             RELOAD_PENALTY_PER_RELOAD = (float)cfg.getDouble("reloadPenaltyPerReload");
             RELOAD_PENALTY_LIMIT = (float)cfg.getDouble("reloadPenaltyLimit");
@@ -244,26 +247,23 @@ public class ModPlugin extends BaseModPlugin {
         }
     }
 
-    static Set<String> fetchList(String path) {
+    static Set<String> fetchList(String path) throws IOException, JSONException {
         Set<String> list = new HashSet<>();
+        JSONArray afJsonArray = Global.getSettings().loadCSV(path);
 
-        try {
-            JSONArray afJsonArray = Global.getSettings().loadCSV(path);
-
-            for (int i = 0; i < afJsonArray.length(); i++) {
+        for (int i = 0; i < afJsonArray.length(); i++) {
                 //Global.getLogger(this.getClass()).info(i + " : " + afJsonArray.getJSONObject(i).getString("faction id"));
 
                 list.add(afJsonArray.getJSONObject(i).getString("faction id"));
             }
-        } catch (Exception e) {
-            Global.getLogger(BattleListener.class).error("Error reading " + path, e);
-            return null;
-        }
 
         return list;
     }
 
     public static boolean reportCrash(Exception exception) {
+        return reportCrash(exception, true);
+    }
+    public static boolean reportCrash(Exception exception, boolean displayToUser) {
         try {
             String stackTrace = "", message = "Ruthless Sector encountered an error!\nPlease let the mod author know.";
 
@@ -274,7 +274,9 @@ public class ModPlugin extends BaseModPlugin {
 
             Global.getLogger(ModPlugin.class).error(exception.getMessage() + System.lineSeparator() + stackTrace);
 
-            if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
+            if (!displayToUser) {
+                return true;
+            } else if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
                 Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
                 Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
             } else if (Global.getSector() != null) {

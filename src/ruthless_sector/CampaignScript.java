@@ -49,6 +49,8 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         try {
             if(!ModPlugin.readSettingsIfNecessary()) return;
 
+            CombatPlugin.clearDomainDroneEcmBonusFlag();
+
             pf = Global.getSector().getPlayerFleet();
 
             if(pf == null) return;
@@ -62,7 +64,12 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
                 for (CampaignFleetAPI flt : Misc.getVisibleFleets(Global.getSector().getPlayerFleet(), true)) {
                     if (Misc.getDistance(target, flt.getLocation()) < flt.getRadius()) {
-                        flt.inflateIfNeeded();
+                        try {
+                            flt.inflateIfNeeded();
+                        } catch (Exception e) {
+                            Global.getLogger(this.getClass()).warn("Failed to inflate fleet");
+                            ModPlugin.reportCrash(e, false);
+                        }
 
                         double efStrength = ModPlugin.tallyShipStrength(flt.getFleetData().getMembersListCopy());
 
@@ -142,6 +149,8 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
         purgeOldestRemnantFleetsIfNeeded();
 
+        int fleetsSpawned = 0;
+
         do {
             CampaignFleetAPI fleet = null;
 
@@ -170,7 +179,12 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                 params.withOfficers = true;
                 params.random = random;
 
-                fleet = FleetFactoryV3.createFleet(params);
+                try {
+                    fleet = FleetFactoryV3.createFleet(params);
+                } catch (Exception e) {
+                    Global.getLogger(ModPlugin.class).warn("Failed to generate fleet: " + params.toString());
+                    ModPlugin.reportCrash(e, false);
+                }
             }
 
             remnantFleets.val.add(fleet);
@@ -178,16 +192,19 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             RemnantSeededFleetManager.initRemnantFleetProperties(random, fleet, false);
             Vector2f.add(loc, Misc.getPointAtRadius(new Vector2f(), variationRadius, random), loc);
             fleet.setLocation(loc.x, loc.y);
-            fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_NO_JUMP, false);
+//            fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_NO_JUMP, false);
             fleet.getMemoryWithoutUpdate().set(MemFlags.MEMORY_KEY_ALLOW_LONG_PURSUIT, true);
             fleet.setFacing(random.nextFloat() * 360f);
 //        fleet.getStats().getSensorStrengthMod().modifyMult("sun_rs_remnant_sensor_bonus", 2);
 
-            if (isAlerted) fleet.addAssignment(FleetAssignment.RAID_SYSTEM, null, Float.MAX_VALUE);
+            if (isAlerted) fleet.addAssignment(FleetAssignment.RAID_SYSTEM, null, Float.MAX_VALUE, "hunting");
             else fleet.addAssignment(FleetAssignment.HOLD, null, Float.MAX_VALUE, "laying in wait");
 
             fleet.setTransponderOn(true);
+
+            fleetsSpawned++;
         } while (random.nextFloat() < ModPlugin.CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS
+                && fleetsSpawned < ModPlugin.MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE
                 && remnantFleets.val.size() < MAX_REMNANT_FLEETS);
     }
 
@@ -240,7 +257,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             for(FleetMemberAPI fm : pf.getRetreated()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
             for(FleetMemberAPI fm : pf.getDisabled()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
             for(FleetMemberAPI fm : pf.getDestroyed()) playerDeployedFP.put(fm, ModPlugin.getShipStrength(fm));
-
+            
             float deployedStrength = 0;
 
             for(Float strength : playerDeployedFP.values()) deployedStrength += strength;

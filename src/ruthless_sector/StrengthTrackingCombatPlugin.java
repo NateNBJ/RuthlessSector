@@ -51,20 +51,11 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
     @Override
     public void init(CombatEngineAPI engine) {
         try {
+            if(engine == null || !engine.isInCampaign() || engine.isSimulation() || engine.isInCampaignSim()) return;
+
             this.engine = engine;
-
-            if (isIrrelevant()) return;
-
-            deployedDP = deployedStrength = Float.MIN_VALUE;
-            selectedDP = selectedStrength = 0;
-            limit = engine.getFleetManager(FleetSide.PLAYER).getMaxStrength();
-
-            playerIsPursuing = engine.getContext().getOtherGoal() == FleetGoal.ESCAPE;
             ef = CombatEngine.getInstance().getFleetManager(1);
             pf = CombatEngine.getInstance().getFleetManager(0);
-            sprite = Global.getSettings().getSprite("ui", "icon_fleet_danger");
-            sprite.setWidth(sprite.getWidth() * PIXEL_WIDTH);
-            sprite.setHeight(sprite.getHeight() * PIXEL_HEIGHT);
 
             if (CampaignScript.timeHasPassedSinceLastEngagement) { // Then this is the start of a new battle
                 CampaignScript.timeHasPassedSinceLastEngagement = false;
@@ -75,7 +66,21 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
                 ModPlugin.resetIntegrationValues();
                 ModPlugin.updateEnemyStrength(efStrength);
-                if(ModPlugin.battlesResolvedSinceLastSave == 0) ModPlugin.adjustReloadPenalty(ModPlugin.RELOAD_PENALTY_PER_RELOAD);
+
+                if(ModPlugin.battlesResolvedSinceLastSave == 0) {
+                    ModPlugin.adjustReloadPenalty(ModPlugin.RELOAD_PENALTY_PER_RELOAD);
+                }
+            }
+
+            if (ModPlugin.SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN) {
+                deployedDP = deployedStrength = Float.MIN_VALUE;
+                selectedDP = selectedStrength = 0;
+                limit = engine.getFleetManager(FleetSide.PLAYER).getMaxStrength();
+
+                playerIsPursuing = engine.getContext().getOtherGoal() == FleetGoal.ESCAPE;
+                sprite = Global.getSettings().getSprite("ui", "icon_fleet_danger");
+                sprite.setWidth(sprite.getWidth() * PIXEL_WIDTH);
+                sprite.setHeight(sprite.getHeight() * PIXEL_HEIGHT);
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
@@ -193,7 +198,18 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
                     if(fm != null) {
                         float newDP = deployedDP + selectedDP + fm.getDeploymentPointsCost();
 
-                        if(!selectedForDeployment.contains(fm) && newDP > limit) continue;
+                        if(Mouse.isButtonDown(1) && fm.isFrigate() && playerIsPursuing
+                                && selectedForDeployment.contains(fm)) {
+
+                            clickCount.put(fm, 0);
+                            selectedDP -= fm.getDeploymentPointsCost();
+                            selectedStrength -= ModPlugin.getShipStrength(fm);
+                            selectedForDeployment.remove(fm);
+                            continue;
+                        }
+
+                        if((!selectedForDeployment.contains(fm) && newDP > limit)
+                            || (!selectedForDeployment.contains(fm) && Mouse.isButtonDown(1))) continue;
 
                         if(!clickCount.containsKey(fm)) clickCount.put(fm, 1);
                         else clickCount.put(fm, clickCount.get(fm) + 1);

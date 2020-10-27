@@ -41,39 +41,45 @@ public class CampaignPlugin extends BaseCampaignPlugin {
         return null;
     }
 
+    public static PluginPick<InteractionDialogPlugin> getEncounterInteractionDialogPlugin(SectorEntityToken interactionTarget) {
+        InteractionDialogPlugin plugin;
+        PickPriority priority = PickPriority.MOD_GENERAL;
+        ModManagerAPI mm = Global.getSettings().getModManager();
+
+        try {
+            if (mm.isModEnabled("swp") && interactionTarget != null
+                    && interactionTarget.getFaction().getId().contentEquals("famous_bounty")) {
+
+                plugin = new SwpCompatibleFleetInteractionDialogPlugin();
+                priority = PickPriority.HIGHEST; // No other way to ensure compatibility, unfortunately
+            } else if (mm.isModEnabled("nexerelin")) {
+                plugin = new NexCompatibleFleetInteractionDialogPlugin();
+            } else if (mm.isModEnabled("THI") && TiandongModPlugin.useCustomFleetPlugin && anIdleMercFleetIsNearby()) {
+                plugin = new ThiCompatibleFleetInteractionDialogPlugin();
+                priority = PickPriority.MOD_SPECIFIC;
+            } else {
+                plugin = new FleetInteractionDialogPlugin();
+            }
+        } catch (Exception e) {
+            plugin = new FleetInteractionDialogPlugin();
+            ModPlugin.reportCrash(e);
+        }
+
+        return new PluginPick<>(plugin, priority);
+    }
+
     @Override
     public PluginPick<InteractionDialogPlugin> pickInteractionDialogPlugin(SectorEntityToken interactionTarget) {
         try {
             if (interactionTarget instanceof CampaignFleetAPI) {
-                InteractionDialogPlugin plugin;
-                PickPriority priority = PickPriority.MOD_GENERAL;
-                ModManagerAPI mm = Global.getSettings().getModManager();
-
-                try {
-                    if (mm.isModEnabled("swp") && interactionTarget.getFaction().getId().contentEquals("famous_bounty")) {
-                        plugin = new SwpCompatibleFleetInteractionDialogPlugin();
-                        priority = PickPriority.HIGHEST; // No other way to ensure compatibility, unfortunately
-                    } else if (mm.isModEnabled("nexerelin")) {
-                        plugin = new NexCompatibleFleetInteractionDialogPlugin();
-                    } else if (mm.isModEnabled("THI") && TiandongModPlugin.useCustomFleetPlugin && anIdleMercFleetIsNearby()) {
-                        plugin = new ThiCompatibleFleetInteractionDialogPlugin();
-                        priority = PickPriority.MOD_SPECIFIC;
-                    } else {
-                        plugin = new FleetInteractionDialogPlugin();
-                    }
-                } catch (Exception e) {
-                    plugin = new FleetInteractionDialogPlugin();
-                    ModPlugin.reportCrash(e);
-                }
-
-                return new PluginPick<>(plugin, priority);
+                return getEncounterInteractionDialogPlugin(interactionTarget);
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
 
         return null;
     }
 
-    boolean anIdleMercFleetIsNearby() {
+    public static boolean anIdleMercFleetIsNearby() {
         for (CampaignFleetAPI mercCandidate : Misc.findNearbyFleets(Global.getSector().getPlayerFleet(), 1500f, null)) {
             if (mercCandidate.getBattle() == null
                     && mercCandidate.getMemoryWithoutUpdate().contains("$tiandongMercTarget")) {

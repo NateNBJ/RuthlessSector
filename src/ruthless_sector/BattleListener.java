@@ -76,13 +76,15 @@ public class BattleListener {
                 }
 
                 if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES && modifier > 100 && context.didPlayerWinEncounter()) {
-                    float repGain = (modifier / 100f - 1f) * 10 * (float)(Math.pow(ModPlugin.enemyStrength.val / 50f, 0.3f) - 0.3f);
+                    double opposition = Math.min(ModPlugin.enemyStrength.val, 200);
+                    float repGain = (modifier / 100f - 1f) * 10 * (float)(Math.pow(opposition / 50f, 0.3f) - 0.3f);
                     WeightedRandomPicker<FactionAPI> picker = new WeightedRandomPicker();
 
                     for(FactionAPI faction : ModPlugin.getAllowedFactions()) {
                         if(faction != otherSide.getFleet().getFaction()
                                 && faction.getRelationship(otherSide.getFleet().getFaction().getId()) <= -0.5f // -0.5 is hostile threshhold
                                 && faction.getRelToPlayer().getLevel() != RepLevel.VENGEFUL
+                                && faction.getRelToPlayer().getLevel() != RepLevel.HOSTILE
                                 && repGain - Math.max(0, faction.getRelToPlayer().getRel()) * 4f > 0) {
 
                             picker.add(faction);
