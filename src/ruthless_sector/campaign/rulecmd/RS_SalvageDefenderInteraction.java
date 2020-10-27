@@ -1,18 +1,27 @@
 package ruthless_sector.campaign.rulecmd;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.PluginPick;
-import com.fs.starfarer.api.campaign.*;
+import com.fs.starfarer.api.campaign.CampaignFleetAPI;
+import com.fs.starfarer.api.campaign.CargoAPI;
+import com.fs.starfarer.api.campaign.CargoStackAPI;
+import com.fs.starfarer.api.campaign.InteractionDialogAPI;
+import com.fs.starfarer.api.campaign.InteractionDialogPlugin;
+import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.campaign.FleetEncounterContextPlugin.DataForEncounterSide;
 import com.fs.starfarer.api.campaign.FleetEncounterContextPlugin.FleetMemberData;
 import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.combat.BattleCreationContext;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.FleetEncounterContext;
-import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl.BaseFIDDelegate;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl.FIDConfig;
-import com.fs.starfarer.api.impl.campaign.ids.*;
+import com.fs.starfarer.api.impl.campaign.ids.Drops;
+import com.fs.starfarer.api.impl.campaign.ids.MemFlags;
+import com.fs.starfarer.api.impl.campaign.ids.Stats;
 import com.fs.starfarer.api.impl.campaign.procgen.SalvageEntityGenDataSpec.DropData;
 import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.impl.campaign.rulecmd.FireBest;
@@ -20,18 +29,14 @@ import com.fs.starfarer.api.impl.campaign.rulecmd.salvage.FleetAdvanceScript;
 import com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SalvageEntity;
 import com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SalvageGenFromSeed.SDMParams;
 import com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SalvageGenFromSeed.SalvageDefenderModificationPlugin;
-import com.fs.starfarer.api.loading.WeaponSpecAPI;
 import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.api.util.Misc.Token;
-import ruthless_sector.CombatPlugin;
 import ruthless_sector.ModPlugin;
-import ruthless_sector.campaign.CampaignPlugin;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import ruthless_sector.campaign.FleetInteractionDialogPlugin;
+import ruthless_sector.CombatPlugin;
 
 public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
+
     public boolean execute(String ruleId, InteractionDialogAPI dialog, List<Token> params, final Map<String, MemoryAPI> memoryMap) {
         if (dialog == null) return false;
 
@@ -72,12 +77,8 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
 
 
 
-        //final FleetInteractionDialogPluginImpl plugin = new FleetInteractionDialogPluginImpl(config);
-        // Line above replaced with below in order to use mod compatible FIDP override
-        PluginPick<InteractionDialogPlugin> pick = CampaignPlugin.getEncounterInteractionDialogPlugin(dialog.getInteractionTarget(), config);
-        final FleetInteractionDialogPluginImpl plugin = pick.plugin instanceof FleetInteractionDialogPluginImpl
-                ? (FleetInteractionDialogPluginImpl)pick.plugin
-                : new FleetInteractionDialogPluginImpl(config);
+        // Line below changed to use FIDP override
+        final FleetInteractionDialogPlugin plugin = new FleetInteractionDialogPlugin(config);
 
         // Block below added
         {
@@ -104,18 +105,6 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         final InteractionDialogPlugin originalPlugin = dialog.getPlugin();
         config.delegate = new BaseFIDDelegate() {
             @Override
@@ -132,8 +121,8 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
                 //Global.getSector().getCampaignUI().clearMessages();
 
                 if (plugin.getContext() instanceof FleetEncounterContext) {
-                    FleetEncounterContext context = (FleetEncounterContext) plugin.getContext();
-                    if (context.didPlayerWinEncounterOutright()) {
+                    FleetEncounterContext context = (FleetEncounterContext) plugin.getContext();  // THIS IS THE ONLY LINE CHANGED
+                    if (context.didPlayerWinEncounter()) {
 
                         SDMParams p = new SDMParams();
                         p.entity = entity;
@@ -200,29 +189,6 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
                 float valueModShips = context.getSalvageValueModPlayerShips();
 
                 for (FleetMemberData data : winner.getEnemyCasualties()) {
-                    // add at least one of each weapon that was present on the OMEGA ships, since these
-                    // are hard to get; don't want them to be too RNG
-                    if (data.getMember() != null && context.getBattle() != null) {
-                        CampaignFleetAPI fleet = context.getBattle().getSourceFleet(data.getMember());
-
-                        if (fleet != null && fleet.getFaction().getId().equals(Factions.OMEGA)) {
-                            for (String slotId : data.getMember().getVariant().getNonBuiltInWeaponSlots()) {
-                                String weaponId = data.getMember().getVariant().getWeaponId(slotId);
-                                if (weaponId == null) continue;
-                                if (salvage.getNumWeapons(weaponId) <= 0) {
-                                    WeaponSpecAPI spec = Global.getSettings().getWeaponSpec(weaponId);
-                                    if (spec.hasTag(Tags.NO_DROP)) continue;
-
-                                    salvage.addWeapons(weaponId, 1);
-                                }
-                            }
-                        }
-
-                        if (fleet != null &&
-                                fleet.getFaction().getCustomBoolean(Factions.CUSTOM_NO_AI_CORES_FROM_AUTOMATED_DEFENSES)) {
-                            continue;
-                        }
-                    }
                     if (config.salvageRandom.nextFloat() < playerContribMult) {
                         DropData drop = new DropData();
                         drop.chances = 1;
@@ -271,4 +237,6 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
 
         return true;
     }
+
+
 }

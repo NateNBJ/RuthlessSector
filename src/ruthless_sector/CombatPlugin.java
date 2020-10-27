@@ -1,10 +1,7 @@
 package ruthless_sector;
 
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.combat.CombatEngineAPI;
-import com.fs.starfarer.api.combat.CombatFleetManagerAPI;
-import com.fs.starfarer.api.combat.MutableShipStatsAPI;
-import com.fs.starfarer.api.combat.ShipAPI;
+import com.fs.starfarer.api.combat.*;
 import com.fs.starfarer.api.impl.campaign.ids.Stats;
 import com.fs.starfarer.api.impl.campaign.skills.ElectronicWarfare;
 import com.fs.starfarer.api.impl.campaign.skills.ElectronicWarfareScript;
@@ -12,7 +9,7 @@ import com.fs.starfarer.api.input.InputEventAPI;
 import com.fs.starfarer.api.mission.FleetSide;
 import com.fs.starfarer.api.util.DynamicStatsAPI;
 
-import java.util.List;
+import java.util.*;
 
 public class CombatPlugin extends StrengthTrackingCombatPlugin {
     public static final String ECM_ID = "sun_rs_jammer_effect";
@@ -31,8 +28,6 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
         try {
             CombatEngineAPI engine = Global.getCombatEngine();
 
-            BattleListener.battleWasAutoresolved = false;
-
             if (engine == null || engine.getShips() == null || !engine.isInCampaign()) return;
 
             if(timeUntilReaplyEcmBonus != Float.MAX_VALUE && !engine.isPaused()) timeUntilReaplyEcmBonus -= amount;
@@ -46,7 +41,7 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                 if(totalStandardRating == 0) {
                     for (ShipAPI ship : engine.getShips()) {
                         if (ship.getOriginalOwner() == 1) {
-                            totalStandardRating += ElectronicWarfare.PER_SHIP_BONUS;
+                            totalStandardRating += ElectronicWarfare.getBase(ship.getHullSize());
                         }
                     }
 
@@ -58,7 +53,7 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                     if(ship.getOriginalOwner() == 1) {
                     //    if(ship.getHullSpec().hasTag("derelict") && ship.getOriginalOwner() == 1) {
                         MutableShipStatsAPI stats = ship.getMutableStats();
-                        float bonus = ElectronicWarfare.PER_SHIP_BONUS;
+                        float bonus = ElectronicWarfare.getBase(ship.getHullSize());
                         bonus += ModPlugin.FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES * (bonus / totalStandardRating);
 
                         stats.getDynamic().getMod(Stats.ELECTRONIC_WARFARE_FLAT).modifyFlat(ECM_ID, bonus);
@@ -80,6 +75,7 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                 }
 
             }
+
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 }
