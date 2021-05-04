@@ -122,7 +122,7 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
 
                 if (plugin.getContext() instanceof FleetEncounterContext) {
                     FleetEncounterContext context = (FleetEncounterContext) plugin.getContext();  // THIS IS THE ONLY LINE CHANGED
-                    if (context.didPlayerWinEncounter()) {
+                    if (context.didPlayerWinEncounterOutright()) {
 
                         SDMParams p = new SDMParams();
                         p.entity = entity;

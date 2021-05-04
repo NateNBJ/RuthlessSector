@@ -75,7 +75,7 @@ public class BattleListener {
                     }
                 }
 
-                if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES && modifier > 100 && context.didPlayerWinEncounter()) {
+                if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES && modifier > 100 && context.didPlayerWinEncounterOutright()) {
                     double opposition = Math.min(ModPlugin.enemyStrength.val, 200);
                     float repGain = (modifier / 100f - 1f) * 10 * (float)(Math.pow(opposition / 50f, 0.3f) - 0.3f);
                     WeightedRandomPicker<FactionAPI> picker = new WeightedRandomPicker();

@@ -41,7 +41,7 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                 if(totalStandardRating == 0) {
                     for (ShipAPI ship : engine.getShips()) {
                         if (ship.getOriginalOwner() == 1) {
-                            totalStandardRating += ElectronicWarfare.getBase(ship.getHullSize());
+                            totalStandardRating += ElectronicWarfare.PER_SHIP_BONUS;
                         }
                     }
 
@@ -53,7 +53,7 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                     if(ship.getOriginalOwner() == 1) {
                     //    if(ship.getHullSpec().hasTag("derelict") && ship.getOriginalOwner() == 1) {
                         MutableShipStatsAPI stats = ship.getMutableStats();
-                        float bonus = ElectronicWarfare.getBase(ship.getHullSize());
+                        float bonus = ElectronicWarfare.PER_SHIP_BONUS;
                         bonus += ModPlugin.FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES * (bonus / totalStandardRating);
 
                         stats.getDynamic().getMod(Stats.ELECTRONIC_WARFARE_FLAT).modifyFlat(ECM_ID, bonus);
