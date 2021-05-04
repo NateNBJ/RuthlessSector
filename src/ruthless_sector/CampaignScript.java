@@ -287,28 +287,28 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         // Commission bounties aren't actually payed in Starsector 0.9.1-RC10 in spite of the notification. This fixes that.
         // TODO - Remove this once the bug is fixed
 
-        FactionCommissionIntel intel = Misc.getCommissionIntel();
-
-        if (intel == null || intel.isEnded() || intel.isEnding()) return;
-
-        if (!battle.isPlayerInvolved()) return;
-
-        int payment = 0;
-        for (CampaignFleetAPI otherFleet : battle.getNonPlayerSideSnapshot()) {
-            if (!intel.getFactionForUIColors().isHostileTo(otherFleet.getFaction())) continue;
-
-            float bounty = 0;
-            for (FleetMemberAPI loss : Misc.getSnapshotMembersLost(otherFleet)) {
-                float mult = Misc.getSizeNum(loss.getHullSpec().getHullSize());
-                bounty += mult * Global.getSettings().getFloat("factionCommissionBounty");
-            }
-
-            payment += (int) (bounty * battle.getPlayerInvolvementFraction());
-        }
-
-        if (payment > 0) {
-            Global.getSector().getPlayerFleet().getCargo().getCredits().add(payment);
-        }
+//        FactionCommissionIntel intel = Misc.getCommissionIntel();
+//
+//        if (intel == null || intel.isEnded() || intel.isEnding()) return;
+//
+//        if (!battle.isPlayerInvolved()) return;
+//
+//        int payment = 0;
+//        for (CampaignFleetAPI otherFleet : battle.getNonPlayerSideSnapshot()) {
+//            if (!intel.getFactionForUIColors().isHostileTo(otherFleet.getFaction())) continue;
+//
+//            float bounty = 0;
+//            for (FleetMemberAPI loss : Misc.getSnapshotMembersLost(otherFleet)) {
+//                float mult = Misc.getSizeNum(loss.getHullSpec().getHullSize());
+//                bounty += mult * Global.getSettings().getFloat("factionCommissionBounty");
+//            }
+//
+//            payment += (int) (bounty * battle.getPlayerInvolvementFraction());
+//        }
+//
+//        if (payment > 0) {
+//            Global.getSector().getPlayerFleet().getCargo().getCredits().add(payment);
+//        }
     }
 
     @Override
