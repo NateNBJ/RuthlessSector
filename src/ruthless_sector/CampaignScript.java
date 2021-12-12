@@ -66,14 +66,14 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     if (Misc.getDistance(target, flt.getLocation()) < flt.getRadius()) {
                         try {
                             flt.inflateIfNeeded();
+
+                            double efStrength = ModPlugin.tallyShipStrength(flt.getFleetData().getMembersListCopy());
+
+                            flt.getMemoryWithoutUpdate().set("$dangerLevelOverride", getDangerStars(pfStrength, efStrength));
                         } catch (Exception e) {
                             Global.getLogger(this.getClass()).warn("Failed to inflate fleet");
                             ModPlugin.reportCrash(e, false);
                         }
-
-                        double efStrength = ModPlugin.tallyShipStrength(flt.getFleetData().getMembersListCopy());
-
-                        flt.getMemoryWithoutUpdate().set("$dangerLevelOverride", getDangerStars(pfStrength, efStrength));
                     }
                 }
             }
