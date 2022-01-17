@@ -3,7 +3,6 @@ package ruthless_sector.campaign;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.BattleAPI;
 import com.fs.starfarer.api.campaign.CampaignFleetAPI;
-import com.fs.starfarer.api.combat.EngagementResultAPI;
 import ruthless_sector.BattleListener;
 import ruthless_sector.ModPlugin;
 
@@ -30,10 +29,19 @@ public class FleetEncounterContext extends com.fs.starfarer.api.impl.campaign.Fl
         float xp = BattleListener.getXpGain(this, side, otherSide);
 
         if (xp > 0) {
-            gainOfficerXP(side, xp * ModPlugin.OFFICER_XP_MULT);
+            gainOfficerXP(side, xp);
 
             fleet.getCommander().getStats().addXP((long) xp, textPanelForXPGain);
             fleet.getCommander().getStats().levelUpIfNeeded(textPanelForXPGain);
+
+            xpGained = xp;
         }
+    }
+
+    @Override
+    public float computeBattleDifficulty() {
+        computedDifficulty = true;
+
+        return difficulty = ModPlugin.DISABLE_VANILLA_DIFFICULTY_BONUS ? 0 : super.computeBattleDifficulty();
     }
 }

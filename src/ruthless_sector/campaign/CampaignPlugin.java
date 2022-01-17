@@ -3,8 +3,11 @@ package ruthless_sector.campaign;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.ModManagerAPI;
 import com.fs.starfarer.api.PluginPick;
-import com.fs.starfarer.api.campaign.*;
-import com.fs.starfarer.api.campaign.BattleAutoresolverPlugin;
+import com.fs.starfarer.api.campaign.BaseCampaignPlugin;
+import com.fs.starfarer.api.campaign.CampaignFleetAPI;
+import com.fs.starfarer.api.campaign.InteractionDialogPlugin;
+import com.fs.starfarer.api.campaign.SectorEntityToken;
+import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.util.Misc;
 import data.scripts.TiandongModPlugin;
 import ruthless_sector.CampaignScript;
@@ -27,21 +30,7 @@ public class CampaignPlugin extends BaseCampaignPlugin {
         return null;
     }
 
-    @Override
-    public PluginPick<BattleAutoresolverPlugin> pickBattleAutoresolverPlugin(BattleAPI battle) {
-        try {
-            if(battle.isPlayerInvolved()) {
-                return new PluginPick<BattleAutoresolverPlugin>(
-                        new ruthless_sector.campaign.BattleAutoresolverPlugin(battle),
-                        PickPriority.MOD_GENERAL
-                );
-            }
-        } catch (Exception e) { ModPlugin.reportCrash(e); }
-
-        return null;
-    }
-
-    public static PluginPick<InteractionDialogPlugin> getEncounterInteractionDialogPlugin(SectorEntityToken interactionTarget) {
+    public static PluginPick<InteractionDialogPlugin> getEncounterInteractionDialogPlugin(SectorEntityToken interactionTarget, FleetInteractionDialogPluginImpl.FIDConfig params) {
         InteractionDialogPlugin plugin;
         PickPriority priority = PickPriority.MOD_GENERAL;
         ModManagerAPI mm = Global.getSettings().getModManager();
@@ -50,18 +39,18 @@ public class CampaignPlugin extends BaseCampaignPlugin {
             if (mm.isModEnabled("swp") && interactionTarget != null
                     && interactionTarget.getFaction().getId().contentEquals("famous_bounty")) {
 
-                plugin = new SwpCompatibleFleetInteractionDialogPlugin();
+                plugin = new SwpCompatibleFleetInteractionDialogPlugin(params);
                 priority = PickPriority.HIGHEST; // No other way to ensure compatibility, unfortunately
             } else if (mm.isModEnabled("nexerelin")) {
-                plugin = new NexCompatibleFleetInteractionDialogPlugin();
+                plugin = new NexCompatibleFleetInteractionDialogPlugin(params);
             } else if (mm.isModEnabled("THI") && TiandongModPlugin.useCustomFleetPlugin && anIdleMercFleetIsNearby()) {
                 plugin = new ThiCompatibleFleetInteractionDialogPlugin();
                 priority = PickPriority.MOD_SPECIFIC;
             } else {
-                plugin = new FleetInteractionDialogPlugin();
+                plugin = new FleetInteractionDialogPlugin(params);
             }
         } catch (Exception e) {
-            plugin = new FleetInteractionDialogPlugin();
+            plugin = new FleetInteractionDialogPlugin(params);
             ModPlugin.reportCrash(e);
         }
 
@@ -72,7 +61,7 @@ public class CampaignPlugin extends BaseCampaignPlugin {
     public PluginPick<InteractionDialogPlugin> pickInteractionDialogPlugin(SectorEntityToken interactionTarget) {
         try {
             if (interactionTarget instanceof CampaignFleetAPI) {
-                return getEncounterInteractionDialogPlugin(interactionTarget);
+                return getEncounterInteractionDialogPlugin(interactionTarget, null);
             }
         } catch (Exception e) { ModPlugin.reportCrash(e); }
 

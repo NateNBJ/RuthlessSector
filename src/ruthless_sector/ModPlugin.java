@@ -6,8 +6,12 @@ import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.ModSpecAPI;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.FactionAPI;
+import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
+import com.fs.starfarer.api.characters.PersonAPI;
 import com.fs.starfarer.api.combat.ShipVariantAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
+import com.fs.starfarer.api.impl.campaign.DModManager;
+import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.impl.campaign.tutorial.GalatianAcademyStipend;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -16,8 +20,8 @@ import ruthless_sector.campaign.CampaignPlugin;
 
 import java.awt.*;
 import java.io.IOException;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 public class ModPlugin extends BaseModPlugin {
     public static final String
@@ -36,10 +40,11 @@ public class ModPlugin extends BaseModPlugin {
             GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = true,
             RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS = true,
             OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = true,
-            SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN = true;
+            DISABLE_VANILLA_DIFFICULTY_BONUS = true,
+            LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = true,
+            SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN = true,
+            ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = true;
     public static float
-            OFFICER_XP_MULT = 0.5f,
-            DIFFICULTY_MULTIPLIER_EXPONENT = 1,
             AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = 800,
             MAX_HYPERSPACE_REMNANT_STRENGTH = 20,
             MAX_REP_GAIN = 5,
@@ -47,18 +52,34 @@ public class ModPlugin extends BaseModPlugin {
             RELOAD_PENALTY_LIMIT = 0.8f,
             RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE = 1.0f,
             RELOAD_PENALTY_REDUCTION_PER_DAY = 0.02f,
-            ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
-            ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
-            PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = 0.02f,
-            PLAYER_FLEET_STRENGTH_MULT = 1,
-            MAX_BATTLE_DIFFICULTY_ESTIMATION = 1.5f,
+
+            MIN_DIFFICULTY_TO_EARN_XP = 0.5f,
+            XP_MULTIPLIER_AFTER_REDUCTION = 3.0f,
+            MAX_XP_MULTIPLIER = Float.MAX_VALUE,
+
+            DMOD_FACTOR_FOR_ENEMY_SHIPS = 0.1f,
+            SMOD_FACTOR_FOR_ENEMY_SHIPS = 0.1f,
+            SKILL_FACTOR_FOR_ENEMY_SHIPS = 0.1f,
+            DMOD_FACTOR_FOR_PLAYER_SHIPS = 0.0f,
+            SMOD_FACTOR_FOR_PLAYER_SHIPS = 0.0f,
+            SKILL_FACTOR_FOR_PLAYER_SHIPS = 0.0f,
+            STRENGTH_INCREASE_PER_PLAYER_LEVEL = 0.07f,
+
+            //DIFFICULTY_MULTIPLIER_EXPONENT = 1,
+            //ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
+            //ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
+            //PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = 0.02f,
+            //PLAYER_FLEET_STRENGTH_MULT = 1,
+            //MAX_BATTLE_DIFFICULTY_ESTIMATION = 1.5f,
+
             LOOTED_CREDITS_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = 0.5f,
             RANGE_MULT_FOR_AUTOMATED_DEFENSES = 1.5f,
             MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = 25f,
             FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = 15f,
-            CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = 0.4f;
+            CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = 0.4f,
+            MAX_REP_LOSS = 10f;
     public static int
             MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = 3;
 
@@ -94,7 +115,7 @@ public class ModPlugin extends BaseModPlugin {
             if(MAJOR < other.MAJOR) return true;
             if(MINOR < other.MINOR) return true;
             if(PATCH < other.PATCH) return true;
-            if(!ignoreRC && RC < other.RC) return true;
+            if(!ignoreRC && !other.isOlderThan(this, true) && RC < other.RC) return true;
 
             return false;
         }
@@ -143,7 +164,7 @@ public class ModPlugin extends BaseModPlugin {
 
             CombatPlugin.clearDomainDroneEcmBonusFlag();
 
-            readSettingsIfNecessary();
+            readSettingsIfNecessary(true);
         } catch (Exception e) { reportCrash(e); }
     }
 
@@ -175,8 +196,10 @@ public class ModPlugin extends BaseModPlugin {
         Saved.loadPersistentData(); // Because script attributes will be reset
     }
 
-    static boolean readSettingsIfNecessary() {
+    static boolean readSettingsIfNecessary(boolean forceRefresh) {
         try {
+            if(forceRefresh) settingsAreRead = false;
+
             if(settingsAreRead) return true;
 
             try {
@@ -199,9 +222,12 @@ public class ModPlugin extends BaseModPlugin {
             GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = cfg.getBoolean("gainReputationForImpressiveVictories");
             RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS = cfg.getBoolean("restrictRepGainToWhitlistedFactions");
             OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = cfg.getBoolean("overrideDangerIndicatorsToShowBattleDifficulty");
+            DISABLE_VANILLA_DIFFICULTY_BONUS = cfg.getBoolean("disableVanillaDifficultyBonus");
+            LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = cfg.getBoolean("loseReputationForBeingFriendlyWithEnemies");
             SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN = cfg.getBoolean("showBattleDifficultyStarsOnDeploymentScreen");
+            ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = cfg.getBoolean("allowReputationLossEvenIfAlreadyNegative");
+            MAX_REP_LOSS = (float)cfg.getDouble("maxRepLoss");
 
-            OFFICER_XP_MULT = (float)cfg.getDouble("officerXpMult");
             AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = (float)cfg.getDouble("averageDistanceBetweenRemnantEncounters");
             MAX_HYPERSPACE_REMNANT_STRENGTH = (float)cfg.getDouble("maxHyperspaceRemnantStrength");
             MAX_REP_GAIN = (float)cfg.getDouble("maxRepGain");
@@ -213,12 +239,24 @@ public class ModPlugin extends BaseModPlugin {
             RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE = (float)cfg.getDouble("reloadPenaltyReductionPerResolvedBattle");
             RELOAD_PENALTY_REDUCTION_PER_DAY = (float)cfg.getDouble("reloadPenaltyReductionPerDay");
 
-            DIFFICULTY_MULTIPLIER_EXPONENT = (float)cfg.getDouble("battleDifficultyExponent");
-            ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = (float)cfg.getDouble("enemyOfficerIncreaseToShipStrengthPerLevel");
-            ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = (float)cfg.getDouble("allyOfficerIncreaseToShipStrengthPerLevel");
-            PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = (float)cfg.getDouble("playerIncreaseToFleetStrengthPerLevel");
-            PLAYER_FLEET_STRENGTH_MULT = (float)cfg.getDouble("playerFleetStrengthMult");
-            MAX_BATTLE_DIFFICULTY_ESTIMATION = (float)cfg.getDouble("maxBattleDifficultyEstimation");
+            MIN_DIFFICULTY_TO_EARN_XP = (float)cfg.getDouble("minDifficultyToEarnXp");
+            XP_MULTIPLIER_AFTER_REDUCTION = (float)cfg.getDouble("xpMultiplierAfterReduction");
+            MAX_XP_MULTIPLIER = (float)getXpMultiplierForDifficulty(2.5); // 2.5 is the last 5 star difficulty
+
+            DMOD_FACTOR_FOR_PLAYER_SHIPS = (float) cfg.getDouble("dModFactorForPlayerShips");
+            SMOD_FACTOR_FOR_PLAYER_SHIPS = (float) cfg.getDouble("sModFactorForPlayerShips");
+            SKILL_FACTOR_FOR_PLAYER_SHIPS = (float) cfg.getDouble("skillFactorForPlayerShips");
+            DMOD_FACTOR_FOR_ENEMY_SHIPS = (float) cfg.getDouble("dModFactorForEnemyShips");
+            SMOD_FACTOR_FOR_ENEMY_SHIPS = (float) cfg.getDouble("sModFactorForEnemyShips");
+            SKILL_FACTOR_FOR_ENEMY_SHIPS = (float) cfg.getDouble("skillFactorForEnemyShips");
+            STRENGTH_INCREASE_PER_PLAYER_LEVEL = (float) cfg.getDouble("strengthIncreasePerPlayerLevel");
+
+//            DIFFICULTY_MULTIPLIER_EXPONENT = (float)cfg.getDouble("battleDifficultyExponent");
+//            ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = (float)cfg.getDouble("enemyOfficerIncreaseToShipStrengthPerLevel");
+//            ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = (float)cfg.getDouble("allyOfficerIncreaseToShipStrengthPerLevel");
+//            PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = (float)cfg.getDouble("playerIncreaseToFleetStrengthPerLevel");
+//            PLAYER_FLEET_STRENGTH_MULT = (float)cfg.getDouble("playerFleetStrengthMult");
+//            MAX_BATTLE_DIFFICULTY_ESTIMATION = (float)cfg.getDouble("maxBattleDifficultyEstimation");
 
             LOOTED_CREDITS_MULTIPLIER = (float)cfg.getDouble("lootedCreditsMultiplier");
             LOOTED_SALVAGE_MULTIPLIER = (float)cfg.getDouble("lootedSalvageMultiplier");
@@ -296,22 +334,20 @@ public class ModPlugin extends BaseModPlugin {
     }
     public static List<FactionAPI> getAllowedFactions() { return allowedFactions; }
 
-    public static double tallyShipStrength(Collection<FleetMemberAPI> fleet) {
+    public static double tallyShipStrength(Collection<FleetMemberAPI> fleet, boolean isPlayerFleet) {
         float fpTotal = 0;
 
-        for (FleetMemberAPI ship : fleet) fpTotal += getShipStrength(ship);
+        for (FleetMemberAPI ship : fleet) fpTotal += getShipStrength(ship, isPlayerFleet);
 
         return Math.max(1, fpTotal);
     }
-    public static float getShipStrength(FleetMemberAPI ship) {
-        float strength = ship.getFleetPointCost();
-        float fpPerOfficerLevel = ship.getOwner() == 0
-                ? ModPlugin.ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL
-                : ModPlugin.ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL;
+    public static float getShipStrength(FleetMemberAPI ship, boolean isPlayerShip) {
+        float fp = ship.getFleetPointCost();
+        float strength;
 
-        if(ship.getHullSpec().isCivilianNonCarrier() || ship.isMothballed() || ship.isFighterWing() || ship.isCivilian() || !ship.canBeDeployedForCombat()) {
-            return 0;
-        } if(ship.isStation()) {
+        if(ship.isFighterWing() || !ship.canBeDeployedForCombat() || ship.getHullSpec().isCivilianNonCarrier() || ship.isMothballed()) {
+            strength = 0;
+        } else if(ship.isStation()) {
             ShipVariantAPI variant = ship.getVariant();
             List<String> slots = variant.getModuleSlots();
             float totalOP = 0, detachedOP = 0;
@@ -327,41 +363,105 @@ public class ModPlugin extends BaseModPlugin {
                 }
             }
 
-            strength *= (totalOP - detachedOP) / Math.max(1, totalOP);
-        } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
-            float dModMult = ship.getBaseDeploymentCostSupplies() > 0
-                    ? (ship.getDeploymentCostSupplies() / ship.getBaseDeploymentCostSupplies())
-                    : 1;
+            strength = fp * (totalOP - detachedOP) / Math.max(1, totalOP);
+        } else {
+            //boolean isPlayerShip = ship.getOwner() == 0 && !ship.isAlly();
+            float dModFactor = isPlayerShip ? ModPlugin.DMOD_FACTOR_FOR_PLAYER_SHIPS : ModPlugin.DMOD_FACTOR_FOR_ENEMY_SHIPS;
+            float sModFactor = isPlayerShip ? ModPlugin.SMOD_FACTOR_FOR_PLAYER_SHIPS : ModPlugin.SMOD_FACTOR_FOR_ENEMY_SHIPS;
+            float skillFactor = isPlayerShip ? ModPlugin.SKILL_FACTOR_FOR_PLAYER_SHIPS : ModPlugin.SKILL_FACTOR_FOR_ENEMY_SHIPS;
 
-            strength *= Math.max(1, Math.min(2, 1 + (strength - 5f) / 25f)) * dModMult;
-        } else{
-            strength = ship.getDeploymentCostSupplies();
-        }
+            float dMods = DModManager.getNumDMods(ship.getVariant());
+            float sMods = ship.getVariant().getSMods().size();
+            float skills = 0;
+            PersonAPI captain = ship.getCaptain();
 
-        float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
-                : ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
-
-        if(ship.getOwner() == 0) {
-            float commanderLevel = 0;
-
-            if(ship.getFleetCommanderForStats() != null && ship.getFleetCommanderForStats().getStats() != null) {
-                commanderLevel = ship.getFleetCommanderForStats().getStats().getLevel();
-            } else if(ship.getOwner() == 0) {
-                commanderLevel = Global.getSector().getPlayerStats().getLevel();
+            if(captain != null && !captain.isDefault()) {
+                for(MutableCharacterStatsAPI.SkillLevelAPI skill : captain.getStats().getSkillsCopy()) {
+                    if (skill.getSkill().isCombatOfficerSkill()) {
+                        if(skill.getLevel() > 0) skills += skill.getSkill().isElite() ? 1.25f : 1;
+                    }
+                }
             }
 
-            strength *= ModPlugin.PLAYER_FLEET_STRENGTH_MULT;
-            strength *= 1 + ModPlugin.PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL * commanderLevel;
+            float dModMult = (float) Math.pow(1 - dModFactor, dMods);
+            float sModMult = (float) Math.pow(1 + sModFactor, sMods);
+            float skillMult = (float) Math.pow(1 + skillFactor, skills);
+            float playerStrengthMult = 1;
+
+            if(isPlayerShip) {
+                playerStrengthMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL
+                        * Global.getSector().getPlayerPerson().getStats().getLevel();
+            }
+
+            strength = fp * (1 + (fp - 5f) / 25f) * dModMult * sModMult * skillMult * playerStrengthMult;
+
+//            Global.getLogger(ModPlugin.class).info(String.format("%20s strength: %3.1f = %3.1f * %.2f * %.2f * %.2f * %.2f",
+//                    ship.getHullId(), strength, fp * (1 + (fp - 5f) / 25f), dModMult, sModMult, skillMult, playerStrengthMult));
         }
 
-        return strength * (1 + captainBonus);
+        return strength;
     }
+//    public static float getShipStrength(FleetMemberAPI ship) {
+//        float strength = ship.getFleetPointCost();
+//        float fpPerOfficerLevel = ship.getOwner() == 0
+//                ? ModPlugin.ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL
+//                : ModPlugin.ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL;
+//
+//        if(ship.getHullSpec().isCivilianNonCarrier() || ship.isMothballed() || ship.isFighterWing() || ship.isCivilian() || !ship.canBeDeployedForCombat()) {
+//            return 0;
+//        } if(ship.isStation()) {
+//            ShipVariantAPI variant = ship.getVariant();
+//            List<String> slots = variant.getModuleSlots();
+//            float totalOP = 0, detachedOP = 0;
+//
+//            for(int i = 0; i < slots.size(); ++i) {
+//                ShipVariantAPI module = variant.getModuleVariant(slots.get(i));
+//                float op = module.getHullSpec().getOrdnancePoints(null);
+//
+//                totalOP += op;
+//
+//                if(ship.getStatus().isPermaDetached(i+1)) {
+//                    detachedOP += op;
+//                }
+//            }
+//
+//            strength *= (totalOP - detachedOP) / Math.max(1, totalOP);
+//        } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
+//            float dModMult = ship.getBaseDeploymentCostSupplies() > 0
+//                    ? (ship.getDeploymentCostSupplies() / ship.getBaseDeploymentCostSupplies())
+//                    : 1;
+//
+//            strength *= Math.max(1, Math.min(2, 1 + (strength - 5f) / 25f)) * dModMult;
+//        } else{
+//            strength = ship.getDeploymentCostSupplies();
+//        }
+//
+//        float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
+//                : ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
+//
+//        if(ship.getOwner() == 0) {
+//            float commanderLevel = 0;
+//
+//            if(ship.getFleetCommanderForStats() != null && ship.getFleetCommanderForStats().getStats() != null) {
+//                commanderLevel = ship.getFleetCommanderForStats().getStats().getLevel();
+//            } else if(ship.getOwner() == 0) {
+//                commanderLevel = Global.getSector().getPlayerStats().getLevel();
+//            }
+//
+//            strength *= ModPlugin.PLAYER_FLEET_STRENGTH_MULT;
+//            strength *= 1 + ModPlugin.PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL * commanderLevel;
+//        }
+//
+//        return strength * (1 + captainBonus);
+//    }
 
     static void updateBattleDifficulty() {
         try {
-            battleDifficulty.val = Math.pow(enemyStrength.val / playerStrength.val, DIFFICULTY_MULTIPLIER_EXPONENT);
-            battleDifficulty.val = Math.min(battleDifficulty.val, MAX_BATTLE_DIFFICULTY_ESTIMATION);
-            battleDifficulty.val *= Math.max (0, 1f - getReloadPenalty());
+            battleDifficulty.val = enemyStrength.val / playerStrength.val;
+
+//            battleDifficulty.val = Math.pow(enemyStrength.val / playerStrength.val, DIFFICULTY_MULTIPLIER_EXPONENT);
+//            battleDifficulty.val = Math.min(battleDifficulty.val, MAX_BATTLE_DIFFICULTY_ESTIMATION);
+//            battleDifficulty.val *= Math.max (0, 1f - getReloadPenalty());
         } catch (Exception e) { reportCrash(e); }
     }
     static void updatePlayerStrength(double strength) {
@@ -409,8 +509,25 @@ public class ModPlugin extends BaseModPlugin {
     public static double getDifficultyMultiplierForLastBattle() {
         return battleDifficulty.val;
     }
+    public static double getDifficultyForLastBattle() {
+        return battleDifficulty.val;
+    }
+    public static double getXpMultiplierForDifficulty(double difficulty) {
+        return Math.max(0, Math.min(MAX_XP_MULTIPLIER, (difficulty - MIN_DIFFICULTY_TO_EARN_XP) * XP_MULTIPLIER_AFTER_REDUCTION));
+    }
+    public static double getXpMultiplierForLastBattle() {
+        try {
+            double xpMult = getXpMultiplierForDifficulty(battleDifficulty.val);
+            return Math.max(0, xpMult * (1f - getReloadPenalty()));
+        } catch (Exception e) { reportCrash(e); }
+
+        return 1;
+    }
     public static double getPlayerFleetStrengthInLastBattle() { return playerStrength.val; }
     public static double getEnemyFleetStrengthInLastBattle() {
         return enemyStrength.val;
+    }
+    public static BaseCommandPlugin createSalvageDefenderInteraction() {
+        return new ruthless_sector.campaign.rulecmd.RS_SalvageDefenderInteraction();
     }
 }
