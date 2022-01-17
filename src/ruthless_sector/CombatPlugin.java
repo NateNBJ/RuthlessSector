@@ -1,7 +1,10 @@
 package ruthless_sector;
 
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.combat.*;
+import com.fs.starfarer.api.combat.CombatEngineAPI;
+import com.fs.starfarer.api.combat.CombatFleetManagerAPI;
+import com.fs.starfarer.api.combat.MutableShipStatsAPI;
+import com.fs.starfarer.api.combat.ShipAPI;
 import com.fs.starfarer.api.impl.campaign.ids.Stats;
 import com.fs.starfarer.api.impl.campaign.skills.ElectronicWarfare;
 import com.fs.starfarer.api.impl.campaign.skills.ElectronicWarfareScript;
@@ -9,7 +12,7 @@ import com.fs.starfarer.api.input.InputEventAPI;
 import com.fs.starfarer.api.mission.FleetSide;
 import com.fs.starfarer.api.util.DynamicStatsAPI;
 
-import java.util.*;
+import java.util.List;
 
 public class CombatPlugin extends StrengthTrackingCombatPlugin {
     public static final String ECM_ID = "sun_rs_jammer_effect";
@@ -27,6 +30,8 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
 
         try {
             CombatEngineAPI engine = Global.getCombatEngine();
+
+            BattleListener.battleWasAutoresolved = false;
 
             if (engine == null || engine.getShips() == null || !engine.isInCampaign()) return;
 
@@ -75,7 +80,6 @@ public class CombatPlugin extends StrengthTrackingCombatPlugin {
                 }
 
             }
-
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 }
