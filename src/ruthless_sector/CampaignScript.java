@@ -40,6 +40,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
     static boolean playerJustRespawned = false, timeHasPassedSinceLastEngagement = true;
 
+    Saved<Long> timestampOfNextJealousy = new Saved<>("timestampOfNextJealousy", Long.MAX_VALUE);
     Saved<Float> distanceToNextEncounter = new Saved("distanceToNextEncounter", 100f);
     Saved<LinkedList<CampaignFleetAPI>> remnantFleets = new Saved<>("remnantFleets", new LinkedList<CampaignFleetAPI>());
 
@@ -115,10 +116,22 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             }
 
             if(Global.getSector().isPaused()) amount = 0;
-            else if(Global.getSector().isInFastAdvance()) amount *= 2;
+            else if(Global.getSector().isInFastAdvance()) amount *= Global.getSettings().getFloat("campaignSpeedupMult");
 
             if(!Global.getSector().isPaused()) {
                 timeHasPassedSinceLastEngagement = true;
+
+                if(ModPlugin.LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES) {
+                    long ts = Global.getSector().getClock().getTimestamp();
+
+                    if(ts >= timestampOfNextJealousy.val) {
+                        loseRepWithOneRandomFactionDueToJealousy();
+
+                        timestampOfNextJealousy.val = (long)(ts + 30 * ModPlugin.TIMESTAMP_TICKS_PER_DAY * (Math.random() + 0.5f));
+                    } else if(timestampOfNextJealousy.val.equals(Long.MAX_VALUE)) {
+                        timestampOfNextJealousy.val = (long)(ts + 60 * ModPlugin.TIMESTAMP_TICKS_PER_DAY);
+                    }
+                }
 
                 float distanceFromCore = pf.getLocation().length() - CORE_RADIUS;
 
@@ -214,7 +227,6 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                 && fleetsSpawned < ModPlugin.MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE
                 && remnantFleets.val.size() < MAX_REMNANT_FLEETS);
     }
-
     void purgeOldestRemnantFleetsIfNeeded() {
         for (int i = 0; remnantFleets.val.size() > MAX_REMNANT_FLEETS && remnantFleets.val.size() > i; ) {
             CampaignFleetAPI rf = remnantFleets.val.get(i);
@@ -227,10 +239,39 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             }
         }
     }
+    void loseRepWithOneRandomFactionDueToJealousy() {
+        WeightedRandomPicker<Pair<FactionAPI, FactionAPI>> picker = new WeightedRandomPicker<>();
+
+        for (FactionAPI hater : Global.getSector().getAllFactions()) {
+            FactionAPI cf = Misc.getCommissionFaction();
+            if (!hater.isShowInIntelTab() || (cf != null && hater.getId().equals(cf.getId()))) continue;
+
+            for (FactionAPI hatersEnemy : Global.getSector().getAllFactions()) {
+                if (!hatersEnemy.isShowInIntelTab() || hater.getId().equals(hatersEnemy.getId())) continue;
+
+                float hate = calculateHate(hater, hatersEnemy);
+
+                if (hate >= 0.25f) picker.add(new Pair(hater, hatersEnemy), (float) Math.pow(hate, 2));
+            }
+        }
+
+         if (!picker.isEmpty()) {
+            Pair<FactionAPI, FactionAPI> winningPair = picker.pick();
+            FactionAPI hater = winningPair.one;
+            FactionAPI hatersEnemy = winningPair.two;
+            float maxHate = 0.01f * ModPlugin.MAX_REP_LOSS;
+            float hate = Math.min(maxHate, calculateHate(hater, hatersEnemy) * maxHate);
+
+            hater.adjustRelationship("player", -hate);
+            CoreReputationPlugin.addAdjustmentMessage(-hate, hater, null, null, null, null, null, true, 0f,
+                    "Change caused by " + hatersEnemy.getRelToPlayer().getLevel().getDisplayName().toLowerCase()
+                            + " standing with their enemy, " + hatersEnemy.getDisplayNameWithArticle());
+            Global.getSoundPlayer().playUISound("ui_rep_drop", 0.85f, 0.5f);
+        }
+    }
 
     public static void setPlayerJustRespawned() { playerJustRespawned = true; }
-
-    static float getDanger(double playerStrength, double enemyStrength) {
+    public static float getDanger(double playerStrength, double enemyStrength) {
         if(playerStrength < 0.01) return MAX_STARS_TO_SHOW;
 
         float danger = 0, difficulty = (float) (enemyStrength / playerStrength);
@@ -248,8 +289,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 //
 //        return Math.min(MAX_STARS_TO_SHOW, 1 + xpMult / MAX_XP_MULTIPLIER * 4);
     }
-
-    static float calculateHate(FactionAPI ofFaction, FactionAPI enemyFaction) {
+    public static float calculateHate(FactionAPI ofFaction, FactionAPI enemyFaction) {
         final float
             relToPlayer = ofFaction.getRelToPlayer().getRel(), // 1
             enemyRelToPlayer = enemyFaction.getRelToPlayer().getRel(), // -0.5
@@ -257,7 +297,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
         if(!ModPlugin.ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE && relToPlayer <= 0) return 0;
 
-        return relToEnemy >= -0.25f || enemyRelToPlayer <= 0.1 ? 0f : (relToPlayer + enemyRelToPlayer) * -relToEnemy;
+        return relToEnemy > -0.5f || enemyRelToPlayer <= 0.1 ? 0f : (relToPlayer + enemyRelToPlayer) * -relToEnemy;
     }
 
     @Override
@@ -348,46 +388,6 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
                 spawnRemnantFleets(distanceFromCore, at, 250, true);
             }
-        }
-    }
-
-    @Override
-    public void reportEconomyMonthEnd() {
-        super.reportEconomyMonthEnd();
-
-        try {
-            if(ModPlugin.LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES) {
-                WeightedRandomPicker<Pair<FactionAPI, FactionAPI>> picker = new WeightedRandomPicker<>();
-
-                for (FactionAPI hater : Global.getSector().getAllFactions()) {
-                    FactionAPI cf = Misc.getCommissionFaction();
-                    if (!hater.isShowInIntelTab() || (cf != null && hater.getId().equals(cf.getId()))) continue;
-
-                    for (FactionAPI hatersEnemy : Global.getSector().getAllFactions()) {
-                        if (!hatersEnemy.isShowInIntelTab() || hater.getId().equals(hatersEnemy.getId())) continue;
-
-                        float hate = calculateHate(hater, hatersEnemy);
-
-                        if (hate >= 0.25f) picker.add(new Pair(hater, hatersEnemy), (float) Math.pow(hate, 2));
-                    }
-                }
-
-                if (!picker.isEmpty()) {
-                    Pair<FactionAPI, FactionAPI> winningPair = picker.pick();
-                    FactionAPI hater = winningPair.one;
-                    FactionAPI hatersEnemy = winningPair.two;
-                    float maxHate = 0.01f * ModPlugin.MAX_REP_LOSS;
-                    float hate = Math.min(maxHate, calculateHate(hater, hatersEnemy) * maxHate);
-
-                    hater.adjustRelationship("player", -hate);
-                    CoreReputationPlugin.addAdjustmentMessage(-hate, hater, null, null, null, null, null, true, 0f,
-                            "Change caused by " + hatersEnemy.getRelToPlayer().getLevel().getDisplayName().toLowerCase()
-                                    + " standing with their enemy, " + hatersEnemy.getDisplayNameWithArticle());
-                    Global.getSoundPlayer().playUISound("ui_rep_drop", 0.85f, 0.5f);
-                }
-            }
-        } catch (Exception e) {
-            ModPlugin.reportCrash(e);
         }
     }
 }

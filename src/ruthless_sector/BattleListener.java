@@ -81,7 +81,7 @@ public class BattleListener {
 
                 if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES && difficulty > 1
                         && context.didPlayerWinEncounterOutright()
-                        && !context.isAutoresolve()) {
+                        && !battleWasAutoresolved) {
 
                     double opposition = Math.min(ModPlugin.enemyStrength.val, 400);
                     float repGain = (difficulty - 1f) * 10 * (float)(Math.pow(opposition / 100f, 0.3f) - 0.3f);

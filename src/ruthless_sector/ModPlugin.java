@@ -29,7 +29,11 @@ public class ModPlugin extends BaseModPlugin {
             SETTINGS_PATH = "RUTHLESS_SECTOR_OPTIONS.ini",
             FACTION_WL_PATH = "data/config/ruthlesssector/faction_rep_change_whitelist.csv",
             FACTION_BL_PATH = "data/config/ruthlesssector/faction_rep_change_blacklist.csv",
-            COMMON_DATA_PATH = "sun_rs/reload_penalty_record.json";
+            COMMON_DATA_PATH = "sun_rs/reload_penalty_record.json",
+            BOUNTY_KEY = "factionCommissionBounty",
+            STIPEND_BASE_KEY = "factionCommissionStipendBase",
+            STIPEND_PER_LEVEL_KEY = "factionCommissionStipendPerLevel";
+    public static final double TIMESTAMP_TICKS_PER_DAY = 8.64E7D;
 
     public static boolean
             ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE = true,
@@ -44,7 +48,12 @@ public class ModPlugin extends BaseModPlugin {
             LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = true,
             SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN = true,
             ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = true;
+
     public static float
+            ORIGINAL_BOUNTY = 300,
+            ORIGINAL_STIPEND_BASE = 5000,
+            ORIGINAL_STIPEND_PER_LEVEL = 1500,
+
             AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = 800,
             MAX_HYPERSPACE_REMNANT_STRENGTH = 20,
             MAX_REP_GAIN = 5,
@@ -80,6 +89,7 @@ public class ModPlugin extends BaseModPlugin {
             FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = 15f,
             CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = 0.4f,
             MAX_REP_LOSS = 10f;
+
     public static int
             MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = 3;
 
@@ -142,6 +152,12 @@ public class ModPlugin extends BaseModPlugin {
                                 "\rCurrent Version: %s",
                         spec.getName(), minimumVersion, currentVersion);
             }
+
+            ORIGINAL_BOUNTY = Global.getSettings().getFloat(BOUNTY_KEY);
+            ORIGINAL_STIPEND_BASE = Global.getSettings().getFloat(STIPEND_BASE_KEY);
+            ORIGINAL_STIPEND_PER_LEVEL = Global.getSettings().getFloat(STIPEND_PER_LEVEL_KEY);
+
+            readSettingsIfNecessary(true);
         } catch (Exception e) {
             Global.getLogger(this.getClass()).error("Version comparison failed.", e);
         }
@@ -156,6 +172,7 @@ public class ModPlugin extends BaseModPlugin {
             timeOfLastSave = Global.getSector().getClock().getTimestamp();
             battleStartedSinceLastSave = false;
             saveGameID = Global.getSector().getPlayerPerson().getId();
+            allowedFactions.clear();
 
             Global.getSector().registerPlugin(new CampaignPlugin());
             Global.getSector().addTransientScript(script = new CampaignScript());
@@ -265,6 +282,10 @@ public class ModPlugin extends BaseModPlugin {
             RANGE_MULT_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("rangeMultForAutomatedDefenses");
             MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("maxEcmRatingForAutomatedDefenses");
             FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("flatEcmBonusForAutomatedDefenses");
+
+            Global.getSettings().setFloat(BOUNTY_KEY, ORIGINAL_BOUNTY * (float) cfg.getDouble(BOUNTY_KEY + "Mult"));
+            Global.getSettings().setFloat(STIPEND_BASE_KEY, ORIGINAL_STIPEND_BASE * (float) cfg.getDouble(STIPEND_BASE_KEY + "Mult"));
+            Global.getSettings().setFloat(STIPEND_PER_LEVEL_KEY, ORIGINAL_STIPEND_PER_LEVEL * (float) cfg.getDouble(STIPEND_PER_LEVEL_KEY + "Mult"));
 
             Set<String> bl = fetchList(FACTION_BL_PATH);
             Set<String> wl = cfg.getBoolean("restrictRepGainToWhitlistedFactions")
