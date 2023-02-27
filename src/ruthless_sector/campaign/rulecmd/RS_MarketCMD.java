@@ -23,9 +23,8 @@ public class RS_MarketCMD extends MarketCMD {
                 : super.execute(ruleId, dialog, params, memoryMap);
     }
 
-    // TODO - Between major versions of Starsector, re-copy this method and replace
-    //  "plugin = new FleetInteractionDialogPluginImpl(config)" with "plugin = new FleetInteractionDialogPlugin(config)"
-    //  Up to date as of 0.97a
+    // TODO - Between major versions of Starsector, re-copy this method and replace the
+    //  FleetInteractionDialogPluginImpl with FleetInteractionDialogPlugin
     @Override
     protected void engage() {
         final SectorEntityToken entity = dialog.getInteractionTarget();
@@ -129,6 +128,5 @@ public class RS_MarketCMD extends MarketCMD {
 
         dialog.setPlugin(plugin);
         plugin.init(dialog);
-
     }
 }

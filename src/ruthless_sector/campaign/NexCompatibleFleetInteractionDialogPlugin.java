@@ -16,7 +16,7 @@ public class NexCompatibleFleetInteractionDialogPlugin extends NexFleetInteracti
 
         Global.getLogger(NexCompatibleFleetInteractionDialogPlugin.class).info("NexCompatibleFleetInteractionDialogPlugin chosen");
 
-        context = new NexCompatibleFeetEncounterContext();
+        context = new NexCompatibleFleetEncounterContext();
     }
 
     @Override

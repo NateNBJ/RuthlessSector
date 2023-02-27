@@ -1,7 +1,6 @@
 package ruthless_sector;
 
 import com.fs.starfarer.api.Global;
-import lunalib.lunaSettings.LunaSettings;
 import lunalib.lunaSettings.LunaSettingsListener;
 
 import static ruthless_sector.ModPlugin.LUNALIB_ID;
@@ -17,11 +16,12 @@ public class LunaSettingsChangedListener implements LunaSettingsListener {
             }
         }
     }
+
     public static void addToManagerIfNeeded() {
         if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)
-                && !LunaSettings.INSTANCE.hasListenerOfClass(LunaSettingsChangedListener.class)) {
+                && !Global.getSector().getListenerManager().hasListenerOfClass(LunaSettingsChangedListener.class)) {
 
-            LunaSettings.INSTANCE.addListener(new LunaSettingsChangedListener());
+            Global.getSector().getListenerManager().addListener(new LunaSettingsChangedListener(), true);
         }
     }
 }

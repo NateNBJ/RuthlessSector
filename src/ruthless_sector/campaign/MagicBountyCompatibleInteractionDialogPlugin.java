@@ -3,7 +3,7 @@ package ruthless_sector.campaign;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.combat.EngagementResultAPI;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
-import org.magiclib.bounty.MagicBountyFleetInteractionDialogPlugin;
+import data.scripts.bounty.MagicBountyFleetInteractionDialogPlugin;
 import ruthless_sector.BattleListener;
 
 public class MagicBountyCompatibleInteractionDialogPlugin extends MagicBountyFleetInteractionDialogPlugin {
