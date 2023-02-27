@@ -40,8 +40,7 @@ public class ModPlugin extends BaseModPlugin {
             BOUNTY_KEY = "factionCommissionBounty",
             STIPEND_BASE_KEY = "factionCommissionStipendBase",
             STIPEND_PER_LEVEL_KEY = "factionCommissionStipendPerLevel";
-    public static final double
-            TIMESTAMP_TICKS_PER_DAY = 8.64E7D;
+    public static final double TIMESTAMP_TICKS_PER_DAY = 8.64E7D;
 
     static final String LUNALIB_ID = "lunalib";
     static JSONObject settingsCfg = null;
@@ -80,7 +79,7 @@ public class ModPlugin extends BaseModPlugin {
         SHOW_DIFFICULTY_MULTIPLIER_NOTIFICATION = getBoolean("showBattleDifficultyNotification");
         LOSE_PROGRESS_TOWARD_NEXT_LEVEL_ON_DEATH = getBoolean("loseProgressTowardNextLevelOnDeath");
         SHOW_XP_LOSS_NOTIFICATION = getBoolean("showXpLossNotification");
-        
+
         GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = getBoolean("gainReputationForImpressiveVictories");
         RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS = getBoolean("restrictRepGainToWhitelistedFactions");
         OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = getBoolean("overrideDangerIndicatorsToShowBattleDifficulty");
