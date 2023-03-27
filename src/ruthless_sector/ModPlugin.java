@@ -522,8 +522,10 @@ public class ModPlugin extends BaseModPlugin {
             float playerStrengthMult = 1;
 
             if(isPlayerShip) {
-                playerStrengthMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL
-                        * Global.getSector().getPlayerPerson().getStats().getLevel();
+                MutableCharacterStatsAPI stats = Global.getSector().getPlayerPerson().getStats();
+                int effectiveLevel = Math.max(0, Math.min(15, stats.getLevel() - stats.getPoints()));
+
+                playerStrengthMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL * effectiveLevel;
             }
 
             strength = fp * (1 + (fp - 5f) / 25f) * dModMult * sModMult * skillMult * playerStrengthMult;
