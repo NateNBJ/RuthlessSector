@@ -79,8 +79,10 @@ public class BattleListener {
                     xp = battleWasAutoresolved ? 0 : rsXp;
                 }
 
-                if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES && difficulty > 1
+                if(ModPlugin.GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES
+                        && difficulty > 1
                         && context.didPlayerWinEncounterOutright()
+                        && otherSide.getFleet().getFaction().isShowInIntelTab()
                         && !battleWasAutoresolved) {
 
                     double opposition = Math.min(ModPlugin.enemyStrength.val, 400);

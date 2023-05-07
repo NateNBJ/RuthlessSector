@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Random;
 
 import static ruthless_sector.ModPlugin.MIN_DIFFICULTY_TO_EARN_XP;
+import static ruthless_sector.ModPlugin.getAllowedFactions;
 
 public class CampaignScript extends BaseCampaignEventListener implements EveryFrameScript {
     static void log(String message) { if(true) Global.getLogger(CampaignScript.class).info(message); }
@@ -242,11 +243,11 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     void loseRepWithOneRandomFactionDueToJealousy() {
         WeightedRandomPicker<Pair<FactionAPI, FactionAPI>> picker = new WeightedRandomPicker<>();
 
-        for (FactionAPI hater : Global.getSector().getAllFactions()) {
+        for (FactionAPI hater : getAllowedFactions()) {
             FactionAPI cf = Misc.getCommissionFaction();
             if (!hater.isShowInIntelTab() || (cf != null && hater.getId().equals(cf.getId()))) continue;
 
-            for (FactionAPI hatersEnemy : Global.getSector().getAllFactions()) {
+            for (FactionAPI hatersEnemy : getAllowedFactions()) {
                 if (!hatersEnemy.isShowInIntelTab() || hater.getId().equals(hatersEnemy.getId())) continue;
 
                 float hate = calculateHate(hater, hatersEnemy);
@@ -364,12 +365,45 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         super.reportPlayerActivatedAbility(ability, param);
 
 
+//        LocationAPI cl = pf.getContainingLocation();
+//        Vector2f loc = pf.getLocation();
+//
+//
+//        Global.getSector().getCampaignUI().addMessage(" Speed:" + pf.getCurrBurnLevel());
+//
+//        CustomCampaignEntityAPI splody = cl.addCustomEntity(Misc.genUID(), null, "sun_rs_lux_wisp", null);
+//        splody.setLocation(loc.x, loc.y);
+
+
+//        float size = pf.getRadius() + 200f;
+//        Color color = new Color(100, 255, 150, 255);
+//
+//        ExplosionEntityPlugin.ExplosionParams params = new ExplosionEntityPlugin.ExplosionParams(color, cl, loc, size, 2f);
+//        params.damage = ExplosionEntityPlugin.ExplosionFleetDamage.HIGH;
+//
+//        CustomCampaignEntityAPI splody = cl.addCustomEntity(Misc.genUID(), "Gate Explosion",
+//                Entities.EXPLOSION, Factions.NEUTRAL, params);
+//        splody.setLocation(loc.x, loc.y);
+//
+//
+//
+//        SectorEntityToken focus = pf.getStarSystem().getStar();
+//        BaseThemeGenerator.EntityLocation el = new BaseThemeGenerator.EntityLocation();
+//        float radius = focus.getRadius() + 100f;
+//        el.orbit = Global.getFactory().createCircularOrbit(focus, (float) Math.random() * 360f,
+//                radius, radius / (10f + 10f * (float) Math.random()));
+//        BaseThemeGenerator.addNonSalvageEntity(cl, el, Entities.FUSION_LAMP, pf.getFaction().getId());
+
+
+
+
+
+
 //        float dfc = pf.getLocation().length() - CORE_RADIUS;
 //        float sectorInnerRadius = Global.getSettings().getFloat("sectorHeight") * 0.5f,
 //                powerScale = Math.min(1, dfc / (sectorInnerRadius - CORE_RADIUS) / MAX_REMNANT_STRENGTH_DISTANCE_FROM_CORE_PERCENTAGE);
 //
 //        Global.getSector().getCampaignUI().addMessage("Power Scale: " + (int)(powerScale * 100) + "%");
-
         if(ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE
                 && (pf != null && pf.isInHyperspace())
                 && Global.getSettings().getModManager().isModEnabled("sun_hyperdrive")

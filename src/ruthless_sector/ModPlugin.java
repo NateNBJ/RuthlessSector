@@ -4,15 +4,21 @@ import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.GameState;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.ModSpecAPI;
+import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.CampaignUIAPI;
 import com.fs.starfarer.api.campaign.FactionAPI;
+import com.fs.starfarer.api.campaign.LocationAPI;
+import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
 import com.fs.starfarer.api.characters.PersonAPI;
 import com.fs.starfarer.api.combat.ShipVariantAPI;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.DModManager;
+import com.fs.starfarer.api.impl.campaign.ids.Factions;
 import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.impl.campaign.tutorial.GalatianAcademyStipend;
+import com.fs.starfarer.api.util.Misc;
+import lunalib.lunaSettings.LunaSettings;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -25,6 +31,7 @@ import java.util.*;
 
 public class ModPlugin extends BaseModPlugin {
     public static final String
+            PREFIX = "sun_rs_",
             ID = "sun_ruthless_sector",
             SETTINGS_PATH = "RUTHLESS_SECTOR_OPTIONS.ini",
             FACTION_WL_PATH = "data/config/ruthlesssector/faction_rep_change_whitelist.csv",
@@ -35,18 +42,164 @@ public class ModPlugin extends BaseModPlugin {
             STIPEND_PER_LEVEL_KEY = "factionCommissionStipendPerLevel";
     public static final double TIMESTAMP_TICKS_PER_DAY = 8.64E7D;
 
+    static final String LUNALIB_ID = "lunalib";
+    static JSONObject settingsCfg = null;
+    static <T> T get(String id, Class<T> type) throws Exception {
+        if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
+            id = PREFIX + id;
+            
+            if(type == Integer.class) return type.cast(LunaSettings.getInt(ModPlugin.ID, id));
+            if(type == Float.class) return type.cast(LunaSettings.getFloat(ModPlugin.ID, id));
+            if(type == Boolean.class) return type.cast(LunaSettings.getBoolean(ModPlugin.ID, id));
+            if(type == Double.class) return type.cast(LunaSettings.getDouble(ModPlugin.ID, id));
+            if(type == String.class) return type.cast(LunaSettings.getString(ModPlugin.ID, id));
+        } else {
+            if (settingsCfg == null) settingsCfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
+
+            if (type == Integer.class) return type.cast(settingsCfg.getInt(id));
+            if (type == Float.class) return type.cast((float) settingsCfg.getDouble(id));
+            if (type == Boolean.class) return type.cast(settingsCfg.getBoolean(id));
+            if (type == Double.class) return type.cast(settingsCfg.getDouble(id));
+            if (type == String.class) return type.cast(settingsCfg.getString(id));
+        }
+
+        throw new MissingResourceException("No setting found with id: " + id, type.getName(), id);
+    }
+    static int getInt(String id) throws Exception { return get(id, Integer.class); }
+    static double getDouble(String id) throws Exception { return get(id, Double.class); }
+    static float getFloat(String id) throws Exception { return get(id, Float.class); }
+    static boolean getBoolean(String id) throws Exception { return get(id, Boolean.class); }
+    static String getString(String id) throws Exception { return get(id, String.class); }
+    static boolean readSettings() throws Exception {
+        GalatianAcademyStipend.DURATION = getFloat("galatianStipendDuration");
+        GalatianAcademyStipend.STIPEND = getInt("galatianStipendPay");
+
+        ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE = getBoolean("enableRemnantEncountersInHyperspace");
+        SCALE_XP_GAIN_BASED_ON_BATTLE_DIFFICULTY = getBoolean("scaleXpGainBasedOnBattleDifficulty");
+        SHOW_DIFFICULTY_MULTIPLIER_NOTIFICATION = getBoolean("showBattleDifficultyNotification");
+        LOSE_PROGRESS_TOWARD_NEXT_LEVEL_ON_DEATH = getBoolean("loseProgressTowardNextLevelOnDeath");
+        SHOW_XP_LOSS_NOTIFICATION = getBoolean("showXpLossNotification");
+
+        GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = getBoolean("gainReputationForImpressiveVictories");
+        RESTRICT_REP_CHANGES_TO_WHITELISTED_FACTIONS = getBoolean("restrictRepChangesToWhitelistedFactions");
+        OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = getBoolean("overrideDangerIndicatorsToShowBattleDifficulty");
+        DISABLE_VANILLA_DIFFICULTY_BONUS = getBoolean("disableVanillaDifficultyBonus");
+        LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = getBoolean("loseReputationForBeingFriendlyWithEnemies");
+        SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN = getBoolean("showBattleDifficultyStarsOnDeploymentScreen");
+        ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = getBoolean("allowReputationLossEvenIfAlreadyNegative");
+        MAX_REP_LOSS = getFloat("maxRepLoss");
+
+        float lyPerSecAtOneBL = Misc.getLYPerDayAtBurn(null, 1) / Global.getSector().getClock().getSecondsPerDay();
+        AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = getFloat("averageLightyearsBetweenRemnantEncounters") / lyPerSecAtOneBL;
+
+        MAX_HYPERSPACE_REMNANT_STRENGTH = getFloat("maxHyperspaceRemnantStrength");
+        MAX_REP_GAIN = getFloat("maxRepGain");
+        CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = getFloat("chanceOfAdditionalHyperspaceRemnantFleets");
+        MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = getInt("maxHyperspaceRemnantFleetsToSpawnAtOnce");
+
+        RELOAD_PENALTY_PER_RELOAD = getFloat("reloadPenaltyPerReload");
+        RELOAD_PENALTY_LIMIT = getFloat("reloadPenaltyLimit");
+        RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE = getFloat("reloadPenaltyReductionPerResolvedBattle");
+        RELOAD_PENALTY_REDUCTION_PER_DAY = getFloat("reloadPenaltyReductionPerDay");
+
+        MIN_DIFFICULTY_TO_EARN_XP = getFloat("minDifficultyToEarnXp");
+        XP_MULTIPLIER_AFTER_REDUCTION = getFloat("xpMultiplierAfterReduction");
+        MAX_XP_MULTIPLIER = (float)getXpMultiplierForDifficulty(2.5); // 2.5 is the last 5 star difficulty
+
+        DMOD_FACTOR_FOR_PLAYER_SHIPS = getFloat("dModFactorForPlayerShips");
+        SMOD_FACTOR_FOR_PLAYER_SHIPS = getFloat("sModFactorForPlayerShips");
+        SKILL_FACTOR_FOR_PLAYER_SHIPS = getFloat("skillFactorForPlayerShips");
+        DMOD_FACTOR_FOR_ENEMY_SHIPS = getFloat("dModFactorForEnemyShips");
+        SMOD_FACTOR_FOR_ENEMY_SHIPS = getFloat("sModFactorForEnemyShips");
+        SKILL_FACTOR_FOR_ENEMY_SHIPS = getFloat("skillFactorForEnemyShips");
+        STRENGTH_INCREASE_PER_PLAYER_LEVEL = getFloat("strengthIncreasePerPlayerLevel");
+
+//            DIFFICULTY_MULTIPLIER_EXPONENT = getFloat("battleDifficultyExponent");
+//            ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = getFloat("enemyOfficerIncreaseToShipStrengthPerLevel");
+//            ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = getFloat("allyOfficerIncreaseToShipStrengthPerLevel");
+//            PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = getFloat("playerIncreaseToFleetStrengthPerLevel");
+//            PLAYER_FLEET_STRENGTH_MULT = getFloat("playerFleetStrengthMult");
+//            MAX_BATTLE_DIFFICULTY_ESTIMATION = getFloat("maxBattleDifficultyEstimation");
+
+        LOOTED_CREDITS_MULTIPLIER = getFloat("lootedCreditsMultiplier");
+        LOOTED_SALVAGE_MULTIPLIER = getFloat("lootedSalvageMultiplier");
+        LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = getFloat("lootedSalvageFromRemnantsMultiplier");
+
+        RANGE_MULT_FOR_AUTOMATED_DEFENSES = getFloat("rangeMultForAutomatedDefenses");
+        MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = getFloat("maxEcmRatingForAutomatedDefenses");
+        FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = getFloat("flatEcmBonusForAutomatedDefenses");
+
+        ENABLE_STARTING_REP_OVERRIDES = getBoolean("enableStartingReputationOverrides");
+        STARTING_REPUTATION_OVERRIDE = getFloat("startingReputationOverride");
+        OVERRIDE_STARTING_FACTION_REPUTATION_AT_START = getBoolean("overrideStartingFactionReputationAtStart");
+        OVERRIDE_INDEPENDENTS_REPUTATION_AT_START = getBoolean("overrideIndependentsReputationAtStart");
+        OVERRIDE_PIRATES_REPUTATION_AT_START = getBoolean("overridePiratesReputationAtStart");
+        OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START = getBoolean("overrideReputationsOfOtherKnownFactionsAtStart");
+
+        Global.getSettings().setFloat(BOUNTY_KEY, ORIGINAL_BOUNTY * getFloat(BOUNTY_KEY + "Mult"));
+        Global.getSettings().setFloat(STIPEND_BASE_KEY, ORIGINAL_STIPEND_BASE * getFloat(STIPEND_BASE_KEY + "Mult"));
+        Global.getSettings().setFloat(STIPEND_PER_LEVEL_KEY, ORIGINAL_STIPEND_PER_LEVEL * getFloat(STIPEND_PER_LEVEL_KEY + "Mult"));
+
+        if(isNewGameStartedPriorToSettingsBeingRead && ENABLE_STARTING_REP_OVERRIDES) {
+                CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
+                LocationAPI startLoc = pf.getContainingLocation();
+                String startingFactionID = Factions.NEUTRAL;
+
+                if(Misc.getCommissionFactionId() != null) {
+                    startingFactionID = Misc.getCommissionFactionId();
+                } else if(!startLoc.isHyperspace()) {
+                    float shortestDistanceSoFar = Float.MAX_VALUE;
+
+                    for(MarketAPI mkt : Misc.getMarketsInLocation(startLoc)) {
+                        if(mkt.getPrimaryEntity() == null || mkt.getFactionId() == null) continue;
+
+                        float distance = Misc.getDistance(pf, mkt.getPrimaryEntity());
+
+                        if(distance < shortestDistanceSoFar) {
+                            startingFactionID = mkt.getFactionId();
+                            shortestDistanceSoFar = distance;
+                        }
+                    }
+                }
+
+
+                for (FactionAPI faction : getAllowedFactions()) {
+                    if (faction.isShowInIntelTab()) {
+                        if((faction.getId().equals(startingFactionID) && !OVERRIDE_STARTING_FACTION_REPUTATION_AT_START)) {
+                            continue;
+                        }
+
+                        switch (faction.getId()) {
+                            case Factions.INDEPENDENT: if(!OVERRIDE_INDEPENDENTS_REPUTATION_AT_START) continue; break;
+                            case Factions.PIRATES: if(!OVERRIDE_PIRATES_REPUTATION_AT_START) continue; break;
+                            default: if(!OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START) continue; break;
+                        }
+
+                        faction.setRelationship(Factions.PLAYER, STARTING_REPUTATION_OVERRIDE * 0.01f);
+                    }
+                }
+            }
+
+        return true;
+    }
+
     public static boolean
+            ENABLE_STARTING_REP_OVERRIDES = false,
             ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE = true,
             SCALE_XP_GAIN_BASED_ON_BATTLE_DIFFICULTY = true,
             SHOW_DIFFICULTY_MULTIPLIER_NOTIFICATION = true,
             LOSE_PROGRESS_TOWARD_NEXT_LEVEL_ON_DEATH = true,
             SHOW_XP_LOSS_NOTIFICATION = true,
             GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = true,
-            RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS = true,
+            RESTRICT_REP_CHANGES_TO_WHITELISTED_FACTIONS = true,
             OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = true,
             DISABLE_VANILLA_DIFFICULTY_BONUS = true,
             LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = true,
             SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN = true,
+            OVERRIDE_STARTING_FACTION_REPUTATION_AT_START = false,
+            OVERRIDE_INDEPENDENTS_REPUTATION_AT_START = false,
+            OVERRIDE_PIRATES_REPUTATION_AT_START = false,
+            OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START = true,
             ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = true;
 
     public static float
@@ -54,7 +207,9 @@ public class ModPlugin extends BaseModPlugin {
             ORIGINAL_STIPEND_BASE = 5000,
             ORIGINAL_STIPEND_PER_LEVEL = 1500,
 
-            AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = 800,
+            STARTING_REPUTATION_OVERRIDE = -65,
+
+            AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = 1600,
             MAX_HYPERSPACE_REMNANT_STRENGTH = 20,
             MAX_REP_GAIN = 5,
             RELOAD_PENALTY_PER_RELOAD = 0.2f,
@@ -101,7 +256,9 @@ public class ModPlugin extends BaseModPlugin {
     static Saved<Double> enemyStrength = new Saved<>("enemyFleetStrengthInLastBattle", 0.0);
 
     static CampaignScript script;
-    static boolean settingsAreRead = false, battleStartedSinceLastSave = false;
+    static boolean settingsAreRead = false;
+    static boolean battleStartedSinceLastSave = false;
+    static boolean isNewGameStartedPriorToSettingsBeingRead = false;
     static int battlesResolvedSinceLastSave = 0;
     static long timeOfLastSave = 0;
     static String saveGameID;
@@ -136,6 +293,12 @@ public class ModPlugin extends BaseModPlugin {
         }
     }
 
+    void removeScripts() {
+        Global.getSector().removeTransientScript(script);
+        Global.getSector().removeListener(script);
+        Global.getSector().removeScriptsOfClass(CampaignScript.class);
+    }
+
     @Override
     public void onApplicationLoad() throws Exception {
         String message = "";
@@ -168,6 +331,9 @@ public class ModPlugin extends BaseModPlugin {
     @Override
     public void onGameLoad(boolean newGame) {
         try {
+            removeScripts();
+
+            isNewGameStartedPriorToSettingsBeingRead = newGame;
             battlesResolvedSinceLastSave = 0;
             timeOfLastSave = Global.getSector().getClock().getTimestamp();
             battleStartedSinceLastSave = false;
@@ -181,6 +347,10 @@ public class ModPlugin extends BaseModPlugin {
 
             CombatPlugin.clearDomainDroneEcmBonusFlag();
 
+            if(Global.getSettings().getModManager().isModEnabled(LUNALIB_ID)) {
+                LunaSettingsChangedListener.addToManagerIfNeeded();
+            }
+
             readSettingsIfNecessary(true);
         } catch (Exception e) { reportCrash(e); }
     }
@@ -189,9 +359,7 @@ public class ModPlugin extends BaseModPlugin {
     public void beforeGameSave() {
         try {
             Saved.updatePersistentData();
-            Global.getSector().removeTransientScript(script);
-            Global.getSector().removeListener(script);
-            Global.getSector().removeScriptsOfClass(CampaignScript.class);
+            removeScripts();
 
             if(battlesResolvedSinceLastSave > 0 || Global.getSector().getClock().getElapsedDaysSince(timeOfLastSave) > 0) {
                 adjustReloadPenalty((battlesResolvedSinceLastSave > 0 ? -RELOAD_PENALTY_PER_RELOAD : 0)
@@ -219,77 +387,17 @@ public class ModPlugin extends BaseModPlugin {
 
             if(settingsAreRead) return true;
 
+            if(Global.getSector() == null || Global.getSector().getAllFactions() == null) return false;
+
             try {
                 commonData = new JSONObject(Global.getSettings().readTextFileFromCommon(COMMON_DATA_PATH));
             } catch (JSONException e) {
                 Global.getSettings().writeTextFileToCommon(COMMON_DATA_PATH, "{}");
                 commonData = new JSONObject(Global.getSettings().readTextFileFromCommon(COMMON_DATA_PATH));
             }
-
-            JSONObject cfg = Global.getSettings().getMergedJSONForMod(SETTINGS_PATH, ID);
-
-            GalatianAcademyStipend.DURATION = (float)cfg.getDouble("galatianStipendDuration");
-            GalatianAcademyStipend.STIPEND = cfg.getInt("galatianStipendPay");
-
-            ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE = cfg.getBoolean("enableRemnantEncountersInHyperspace");
-            SCALE_XP_GAIN_BASED_ON_BATTLE_DIFFICULTY = cfg.getBoolean("scaleXpGainBasedOnBattleDifficulty");
-            SHOW_DIFFICULTY_MULTIPLIER_NOTIFICATION = cfg.getBoolean("showBattleDifficultyNotification");
-            LOSE_PROGRESS_TOWARD_NEXT_LEVEL_ON_DEATH = cfg.getBoolean("loseProgressTowardNextLevelOnDeath");
-            SHOW_XP_LOSS_NOTIFICATION = cfg.getBoolean("showXpLossNotification");
-            GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = cfg.getBoolean("gainReputationForImpressiveVictories");
-            RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS = cfg.getBoolean("restrictRepGainToWhitlistedFactions");
-            OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = cfg.getBoolean("overrideDangerIndicatorsToShowBattleDifficulty");
-            DISABLE_VANILLA_DIFFICULTY_BONUS = cfg.getBoolean("disableVanillaDifficultyBonus");
-            LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = cfg.getBoolean("loseReputationForBeingFriendlyWithEnemies");
-            SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN = cfg.getBoolean("showBattleDifficultyStarsOnDeploymentScreen");
-            ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = cfg.getBoolean("allowReputationLossEvenIfAlreadyNegative");
-            MAX_REP_LOSS = (float)cfg.getDouble("maxRepLoss");
-
-            AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS = (float)cfg.getDouble("averageDistanceBetweenRemnantEncounters");
-            MAX_HYPERSPACE_REMNANT_STRENGTH = (float)cfg.getDouble("maxHyperspaceRemnantStrength");
-            MAX_REP_GAIN = (float)cfg.getDouble("maxRepGain");
-            CHANCE_OF_ADDITIONAL_HYPERSPACE_REMNANT_FLEETS = (float)cfg.getDouble("chanceOfAdditionalHyperspaceRemnantFleets");
-            MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = cfg.getInt("maxHyperspaceRemnantFleetsToSpawnAtOnce");
-
-            RELOAD_PENALTY_PER_RELOAD = (float)cfg.getDouble("reloadPenaltyPerReload");
-            RELOAD_PENALTY_LIMIT = (float)cfg.getDouble("reloadPenaltyLimit");
-            RELOAD_PENALTY_REDUCTION_PER_RESOLVED_BATTLE = (float)cfg.getDouble("reloadPenaltyReductionPerResolvedBattle");
-            RELOAD_PENALTY_REDUCTION_PER_DAY = (float)cfg.getDouble("reloadPenaltyReductionPerDay");
-
-            MIN_DIFFICULTY_TO_EARN_XP = (float)cfg.getDouble("minDifficultyToEarnXp");
-            XP_MULTIPLIER_AFTER_REDUCTION = (float)cfg.getDouble("xpMultiplierAfterReduction");
-            MAX_XP_MULTIPLIER = (float)getXpMultiplierForDifficulty(2.5); // 2.5 is the last 5 star difficulty
-
-            DMOD_FACTOR_FOR_PLAYER_SHIPS = (float) cfg.getDouble("dModFactorForPlayerShips");
-            SMOD_FACTOR_FOR_PLAYER_SHIPS = (float) cfg.getDouble("sModFactorForPlayerShips");
-            SKILL_FACTOR_FOR_PLAYER_SHIPS = (float) cfg.getDouble("skillFactorForPlayerShips");
-            DMOD_FACTOR_FOR_ENEMY_SHIPS = (float) cfg.getDouble("dModFactorForEnemyShips");
-            SMOD_FACTOR_FOR_ENEMY_SHIPS = (float) cfg.getDouble("sModFactorForEnemyShips");
-            SKILL_FACTOR_FOR_ENEMY_SHIPS = (float) cfg.getDouble("skillFactorForEnemyShips");
-            STRENGTH_INCREASE_PER_PLAYER_LEVEL = (float) cfg.getDouble("strengthIncreasePerPlayerLevel");
-
-//            DIFFICULTY_MULTIPLIER_EXPONENT = (float)cfg.getDouble("battleDifficultyExponent");
-//            ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = (float)cfg.getDouble("enemyOfficerIncreaseToShipStrengthPerLevel");
-//            ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = (float)cfg.getDouble("allyOfficerIncreaseToShipStrengthPerLevel");
-//            PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = (float)cfg.getDouble("playerIncreaseToFleetStrengthPerLevel");
-//            PLAYER_FLEET_STRENGTH_MULT = (float)cfg.getDouble("playerFleetStrengthMult");
-//            MAX_BATTLE_DIFFICULTY_ESTIMATION = (float)cfg.getDouble("maxBattleDifficultyEstimation");
-
-            LOOTED_CREDITS_MULTIPLIER = (float)cfg.getDouble("lootedCreditsMultiplier");
-            LOOTED_SALVAGE_MULTIPLIER = (float)cfg.getDouble("lootedSalvageMultiplier");
-            LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = (float)cfg.getDouble("lootedSalvageFromRemnantsMultiplier");
-
-            RANGE_MULT_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("rangeMultForAutomatedDefenses");
-            MAX_ECM_RATING_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("maxEcmRatingForAutomatedDefenses");
-            FLAT_ECM_BONUS_FOR_AUTOMATED_DEFENSES = (float)cfg.getDouble("flatEcmBonusForAutomatedDefenses");
-
-            Global.getSettings().setFloat(BOUNTY_KEY, ORIGINAL_BOUNTY * (float) cfg.getDouble(BOUNTY_KEY + "Mult"));
-            Global.getSettings().setFloat(STIPEND_BASE_KEY, ORIGINAL_STIPEND_BASE * (float) cfg.getDouble(STIPEND_BASE_KEY + "Mult"));
-            Global.getSettings().setFloat(STIPEND_PER_LEVEL_KEY, ORIGINAL_STIPEND_PER_LEVEL * (float) cfg.getDouble(STIPEND_PER_LEVEL_KEY + "Mult"));
-
+            
             Set<String> bl = fetchList(FACTION_BL_PATH);
-            Set<String> wl = cfg.getBoolean("restrictRepGainToWhitlistedFactions")
-                    ? fetchList(FACTION_WL_PATH) : null;
+            Set<String> wl = RESTRICT_REP_CHANGES_TO_WHITELISTED_FACTIONS ? fetchList(FACTION_WL_PATH) : null;
 
             for (FactionAPI faction : Global.getSector().getAllFactions()) {
                 if (faction.isShowInIntelTab()
@@ -300,6 +408,10 @@ public class ModPlugin extends BaseModPlugin {
                 }
             }
 
+            readSettings();
+
+            isNewGameStartedPriorToSettingsBeingRead = false;
+
             return settingsAreRead = true;
         } catch (Exception e) {
             return settingsAreRead = reportCrash(e);
@@ -308,7 +420,7 @@ public class ModPlugin extends BaseModPlugin {
 
     static Set<String> fetchList(String path) throws IOException, JSONException {
         Set<String> list = new HashSet<>();
-        JSONArray afJsonArray = Global.getSettings().loadCSV(path);
+        JSONArray afJsonArray = Global.getSettings().getMergedSpreadsheetDataForMod("faction id", path, ID);
 
         for (int i = 0; i < afJsonArray.length(); i++) {
                 //Global.getLogger(this.getClass()).info(i + " : " + afJsonArray.getJSONObject(i).getString("faction id"));
@@ -410,8 +522,10 @@ public class ModPlugin extends BaseModPlugin {
             float playerStrengthMult = 1;
 
             if(isPlayerShip) {
-                playerStrengthMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL
-                        * Global.getSector().getPlayerPerson().getStats().getLevel();
+                MutableCharacterStatsAPI stats = Global.getSector().getPlayerPerson().getStats();
+                int effectiveLevel = Math.max(0, Math.min(15, stats.getLevel() - stats.getPoints()));
+
+                playerStrengthMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL * effectiveLevel;
             }
 
             strength = fp * (1 + (fp - 5f) / 25f) * dModMult * sModMult * skillMult * playerStrengthMult;

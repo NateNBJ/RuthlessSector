@@ -10,8 +10,13 @@ import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.util.Misc;
 import data.scripts.TiandongModPlugin;
+import org.magiclib.bounty.ActiveBounty;
+import org.magiclib.bounty.MagicBountyCoordinator;
 import ruthless_sector.CampaignScript;
 import ruthless_sector.ModPlugin;
+
+import java.util.Collection;
+import java.util.Iterator;
 
 public class CampaignPlugin extends BaseCampaignPlugin {
 
@@ -41,8 +46,12 @@ public class CampaignPlugin extends BaseCampaignPlugin {
 
                 plugin = new SwpCompatibleFleetInteractionDialogPlugin(params);
                 priority = PickPriority.HIGHEST; // No other way to ensure compatibility, unfortunately
+            } else if (mm.isModEnabled("MagicLib") && isTargetMagicBounty(interactionTarget)) {
+                plugin = new MagicBountyCompatibleInteractionDialogPlugin(params);
+                priority = PickPriority.MOD_SPECIFIC;
             } else if (mm.isModEnabled("nexerelin")) {
                 plugin = new NexCompatibleFleetInteractionDialogPlugin(params);
+                priority = PickPriority.MOD_GENERAL;
             } else if (mm.isModEnabled("THI") && TiandongModPlugin.useCustomFleetPlugin && anIdleMercFleetIsNearby()) {
                 plugin = new ThiCompatibleFleetInteractionDialogPlugin();
                 priority = PickPriority.MOD_SPECIFIC;
@@ -74,6 +83,22 @@ public class CampaignPlugin extends BaseCampaignPlugin {
                     && mercCandidate.getMemoryWithoutUpdate().contains("$tiandongMercTarget")) {
 
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static boolean isTargetMagicBounty(SectorEntityToken interactionTarget) {
+        Collection<ActiveBounty> bounties = MagicBountyCoordinator.getInstance().getActiveBounties().values();
+        if (bounties.size() > 0 && interactionTarget instanceof CampaignFleetAPI) {
+            Iterator i$ = bounties.iterator();
+
+            while(i$.hasNext()) {
+                ActiveBounty bounty = (ActiveBounty)i$.next();
+                if (bounty.getFlagshipId() != null && bounty.getFlagshipId().equals(((CampaignFleetAPI)interactionTarget).getFlagship().getId())) {
+                    return true;
+                }
             }
         }
 
