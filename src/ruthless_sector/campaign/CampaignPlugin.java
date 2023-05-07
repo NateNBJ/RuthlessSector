@@ -10,8 +10,8 @@ import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.util.Misc;
 import data.scripts.TiandongModPlugin;
-import data.scripts.bounty.ActiveBounty;
-import data.scripts.bounty.MagicBountyCoordinator;
+import org.magiclib.bounty.ActiveBounty;
+import org.magiclib.bounty.MagicBountyCoordinator;
 import ruthless_sector.CampaignScript;
 import ruthless_sector.ModPlugin;
 

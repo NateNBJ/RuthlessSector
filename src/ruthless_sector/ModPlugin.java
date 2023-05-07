@@ -81,7 +81,7 @@ public class ModPlugin extends BaseModPlugin {
         SHOW_XP_LOSS_NOTIFICATION = getBoolean("showXpLossNotification");
 
         GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = getBoolean("gainReputationForImpressiveVictories");
-        RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS = getBoolean("restrictRepGainToWhitelistedFactions");
+        RESTRICT_REP_CHANGES_TO_WHITELISTED_FACTIONS = getBoolean("restrictRepChangesToWhitelistedFactions");
         OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = getBoolean("overrideDangerIndicatorsToShowBattleDifficulty");
         DISABLE_VANILLA_DIFFICULTY_BONUS = getBoolean("disableVanillaDifficultyBonus");
         LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = getBoolean("loseReputationForBeingFriendlyWithEnemies");
@@ -163,9 +163,9 @@ public class ModPlugin extends BaseModPlugin {
                 }
 
 
-                for (FactionAPI faction : Global.getSector().getAllFactions()) {
+                for (FactionAPI faction : getAllowedFactions()) {
                     if (faction.isShowInIntelTab()) {
-                        if(faction.getId().equals(startingFactionID) && !OVERRIDE_STARTING_FACTION_REPUTATION_AT_START) {
+                        if((faction.getId().equals(startingFactionID) && !OVERRIDE_STARTING_FACTION_REPUTATION_AT_START)) {
                             continue;
                         }
 
@@ -191,7 +191,7 @@ public class ModPlugin extends BaseModPlugin {
             LOSE_PROGRESS_TOWARD_NEXT_LEVEL_ON_DEATH = true,
             SHOW_XP_LOSS_NOTIFICATION = true,
             GAIN_REPUTATION_FOR_IMPRESSIVE_VICTORIES = true,
-            RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS = true,
+            RESTRICT_REP_CHANGES_TO_WHITELISTED_FACTIONS = true,
             OVERRIDE_DANGER_INDICATORS_TO_SHOW_BATTLE_DIFFICULTY = true,
             DISABLE_VANILLA_DIFFICULTY_BONUS = true,
             LOSE_REPUTATION_FOR_BEING_FRIENDLY_WITH_ENEMIES = true,
@@ -396,10 +396,8 @@ public class ModPlugin extends BaseModPlugin {
                 commonData = new JSONObject(Global.getSettings().readTextFileFromCommon(COMMON_DATA_PATH));
             }
             
-            readSettings();
-            
             Set<String> bl = fetchList(FACTION_BL_PATH);
-            Set<String> wl = RESTRICT_REP_GAIN_TO_WHITLISTED_FACTIONS ? fetchList(FACTION_WL_PATH) : null;
+            Set<String> wl = RESTRICT_REP_CHANGES_TO_WHITELISTED_FACTIONS ? fetchList(FACTION_WL_PATH) : null;
 
             for (FactionAPI faction : Global.getSector().getAllFactions()) {
                 if (faction.isShowInIntelTab()
@@ -409,6 +407,8 @@ public class ModPlugin extends BaseModPlugin {
                     allowedFactions.add(faction);
                 }
             }
+
+            readSettings();
 
             isNewGameStartedPriorToSettingsBeingRead = false;
 

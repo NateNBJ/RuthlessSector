@@ -4,7 +4,7 @@ import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.BattleAPI;
 import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.FleetEncounterContextPlugin;
-import data.scripts.bounty.MagicBountyFleetEncounterContext;
+import org.magiclib.bounty.MagicBountyFleetEncounterContext;
 import ruthless_sector.BattleListener;
 import ruthless_sector.ModPlugin;
 

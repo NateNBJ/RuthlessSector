@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Random;
 
 import static ruthless_sector.ModPlugin.MIN_DIFFICULTY_TO_EARN_XP;
+import static ruthless_sector.ModPlugin.getAllowedFactions;
 
 public class CampaignScript extends BaseCampaignEventListener implements EveryFrameScript {
     static void log(String message) { if(true) Global.getLogger(CampaignScript.class).info(message); }
@@ -242,11 +243,11 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
     void loseRepWithOneRandomFactionDueToJealousy() {
         WeightedRandomPicker<Pair<FactionAPI, FactionAPI>> picker = new WeightedRandomPicker<>();
 
-        for (FactionAPI hater : Global.getSector().getAllFactions()) {
+        for (FactionAPI hater : getAllowedFactions()) {
             FactionAPI cf = Misc.getCommissionFaction();
             if (!hater.isShowInIntelTab() || (cf != null && hater.getId().equals(cf.getId()))) continue;
 
-            for (FactionAPI hatersEnemy : Global.getSector().getAllFactions()) {
+            for (FactionAPI hatersEnemy : getAllowedFactions()) {
                 if (!hatersEnemy.isShowInIntelTab() || hater.getId().equals(hatersEnemy.getId())) continue;
 
                 float hate = calculateHate(hater, hatersEnemy);
