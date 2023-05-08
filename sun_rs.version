@@ -1,11 +1,12 @@
 {
     "masterVersionFile":"https://raw.githubusercontent.com/NateNBJ/RuthlessSector/master/sun_rs.version",
+    "directDownloadURL":"https://github.com/NateNBJ/RuthlessSector/releases/latest/download/Ruthless.Sector.zip",
     "modName":"Ruthless Sector",
     "modThreadId":15279,
     "modVersion":
     {
         "major":1,
-        "minor":4,
+        "minor":5,
         "patch":"0",
     },
 }
