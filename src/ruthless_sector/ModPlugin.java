@@ -4,10 +4,7 @@ import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.GameState;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.ModSpecAPI;
-import com.fs.starfarer.api.campaign.CampaignFleetAPI;
-import com.fs.starfarer.api.campaign.CampaignUIAPI;
-import com.fs.starfarer.api.campaign.FactionAPI;
-import com.fs.starfarer.api.campaign.LocationAPI;
+import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
 import com.fs.starfarer.api.characters.PersonAPI;
@@ -17,7 +14,9 @@ import com.fs.starfarer.api.impl.campaign.DModManager;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
 import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.impl.campaign.tutorial.GalatianAcademyStipend;
+import com.fs.starfarer.api.impl.campaign.tutorial.TutorialMissionIntel;
 import com.fs.starfarer.api.util.Misc;
+import com.fs.starfarer.api.util.WeightedRandomPicker;
 import lunalib.lunaSettings.LunaSettings;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -37,11 +36,13 @@ public class ModPlugin extends BaseModPlugin {
             FACTION_WL_PATH = "data/config/ruthlesssector/faction_rep_change_whitelist.csv",
             FACTION_BL_PATH = "data/config/ruthlesssector/faction_rep_change_blacklist.csv",
             COMMON_DATA_PATH = "sun_rs/reload_penalty_record.json",
+            HOSTILITY_ACCESSIBILITY_PENALTY_KEY = "accessibilityLossWhenAllHostile",
             BOUNTY_KEY = "factionCommissionBounty",
             STIPEND_BASE_KEY = "factionCommissionStipendBase",
             STIPEND_PER_LEVEL_KEY = "factionCommissionStipendPerLevel";
     public static final double TIMESTAMP_TICKS_PER_DAY = 8.64E7D;
 
+    static final String NEX_ID = "nexerelin";
     static final String LUNALIB_ID = "lunalib";
     static JSONObject settingsCfg = null;
     static <T> T get(String id, Class<T> type) throws Exception {
@@ -134,53 +135,34 @@ public class ModPlugin extends BaseModPlugin {
         OVERRIDE_STARTING_FACTION_REPUTATION_AT_START = getBoolean("overrideStartingFactionReputationAtStart");
         OVERRIDE_INDEPENDENTS_REPUTATION_AT_START = getBoolean("overrideIndependentsReputationAtStart");
         OVERRIDE_PIRATES_REPUTATION_AT_START = getBoolean("overridePiratesReputationAtStart");
-        OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START = getBoolean("overrideReputationsOfOtherKnownFactionsAtStart");
+        PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START = getInt("percentOfOtherKnownFactionReputationsToOverrideAtStart");
 
+        NAME_OR_ID_OF_STARTING_FACTION = getString("nameOrIdOfStartingFaction");
+        RANDOMIZED_STARTING_LOCATION_AND_FACTION = getBoolean("randomizedStartingLocationAndFaction");
+        ALIGN_REPUTATION_OVERRIDES_WITH_STARTING_FACTION = getBoolean("alignReputationOverridesWithStartingFaction");
+
+        Global.getSettings().setFloat(HOSTILITY_ACCESSIBILITY_PENALTY_KEY, ORIGINAL_HOSTILITY_ACCESSIBILITY_PENALTY * getInt("maxAccessibilityLossFromHostility") * 0.01f);
         Global.getSettings().setFloat(BOUNTY_KEY, ORIGINAL_BOUNTY * getFloat(BOUNTY_KEY + "Mult"));
         Global.getSettings().setFloat(STIPEND_BASE_KEY, ORIGINAL_STIPEND_BASE * getFloat(STIPEND_BASE_KEY + "Mult"));
         Global.getSettings().setFloat(STIPEND_PER_LEVEL_KEY, ORIGINAL_STIPEND_PER_LEVEL * getFloat(STIPEND_PER_LEVEL_KEY + "Mult"));
 
-        if(isNewGameStartedPriorToSettingsBeingRead && ENABLE_STARTING_REP_OVERRIDES) {
-                CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
-                LocationAPI startLoc = pf.getContainingLocation();
-                String startingFactionID = Factions.NEUTRAL;
-
-                if(Misc.getCommissionFactionId() != null) {
-                    startingFactionID = Misc.getCommissionFactionId();
-                } else if(!startLoc.isHyperspace()) {
-                    float shortestDistanceSoFar = Float.MAX_VALUE;
-
-                    for(MarketAPI mkt : Misc.getMarketsInLocation(startLoc)) {
-                        if(mkt.getPrimaryEntity() == null || mkt.getFactionId() == null) continue;
-
-                        float distance = Misc.getDistance(pf, mkt.getPrimaryEntity());
-
-                        if(distance < shortestDistanceSoFar) {
-                            startingFactionID = mkt.getFactionId();
-                            shortestDistanceSoFar = distance;
-                        }
-                    }
-                }
-
-
-                for (FactionAPI faction : getAllowedFactions()) {
-                    if (faction.isShowInIntelTab()) {
-                        if((faction.getId().equals(startingFactionID) && !OVERRIDE_STARTING_FACTION_REPUTATION_AT_START)) {
-                            continue;
-                        }
-
-                        switch (faction.getId()) {
-                            case Factions.INDEPENDENT: if(!OVERRIDE_INDEPENDENTS_REPUTATION_AT_START) continue; break;
-                            case Factions.PIRATES: if(!OVERRIDE_PIRATES_REPUTATION_AT_START) continue; break;
-                            default: if(!OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START) continue; break;
-                        }
-
-                        faction.setRelationship(Factions.PLAYER, STARTING_REPUTATION_OVERRIDE * 0.01f);
-                    }
-                }
-            }
-
         return true;
+    }
+    static int pickRelationsToOverride(WeightedRandomPicker<FactionAPI> picker, FactionAPI startFaction, int maxToOverride) {
+        int overridden = 0;
+
+        while(!picker.isEmpty() && overridden < maxToOverride) {
+            FactionAPI toOverride = picker.pickAndRemove();
+
+            toOverride.setRelationship(Factions.PLAYER, STARTING_REPUTATION_OVERRIDE * 0.01f);
+            overridden++;
+
+            if(startFaction != null && startFaction.getId().equals(Misc.getCommissionFactionId())) {
+                toOverride.setRelationship(startFaction.getId(), STARTING_REPUTATION_OVERRIDE * 0.01f);
+            }
+        }
+
+        return overridden;
     }
 
     public static boolean
@@ -199,10 +181,12 @@ public class ModPlugin extends BaseModPlugin {
             OVERRIDE_STARTING_FACTION_REPUTATION_AT_START = false,
             OVERRIDE_INDEPENDENTS_REPUTATION_AT_START = false,
             OVERRIDE_PIRATES_REPUTATION_AT_START = false,
-            OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START = true,
-            ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = true;
+            ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = true,
+            RANDOMIZED_STARTING_LOCATION_AND_FACTION = true,
+            ALIGN_REPUTATION_OVERRIDES_WITH_STARTING_FACTION = true;
 
     public static float
+            ORIGINAL_HOSTILITY_ACCESSIBILITY_PENALTY = 1.0f,
             ORIGINAL_BOUNTY = 300,
             ORIGINAL_STIPEND_BASE = 5000,
             ORIGINAL_STIPEND_PER_LEVEL = 1500,
@@ -229,13 +213,6 @@ public class ModPlugin extends BaseModPlugin {
             SKILL_FACTOR_FOR_PLAYER_SHIPS = 0.0f,
             STRENGTH_INCREASE_PER_PLAYER_LEVEL = 0.07f,
 
-            //DIFFICULTY_MULTIPLIER_EXPONENT = 1,
-            //ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
-            //ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
-            //PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = 0.02f,
-            //PLAYER_FLEET_STRENGTH_MULT = 1,
-            //MAX_BATTLE_DIFFICULTY_ESTIMATION = 1.5f,
-
             LOOTED_CREDITS_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = 0.5f,
@@ -246,7 +223,11 @@ public class ModPlugin extends BaseModPlugin {
             MAX_REP_LOSS = 10f;
 
     public static int
+            PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START = 40,
             MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = 3;
+
+    public static String
+            NAME_OR_ID_OF_STARTING_FACTION = "";
 
     static List<FactionAPI> allowedFactions = new ArrayList();
     static JSONObject commonData;
@@ -258,7 +239,7 @@ public class ModPlugin extends BaseModPlugin {
     static CampaignScript script;
     static boolean settingsAreRead = false;
     static boolean battleStartedSinceLastSave = false;
-    static boolean isNewGameStartedPriorToSettingsBeingRead = false;
+    static boolean startingConditionsNeedToBeApplied = false;
     static int battlesResolvedSinceLastSave = 0;
     static long timeOfLastSave = 0;
     static String saveGameID;
@@ -316,6 +297,7 @@ public class ModPlugin extends BaseModPlugin {
                         spec.getName(), minimumVersion, currentVersion);
             }
 
+            ORIGINAL_HOSTILITY_ACCESSIBILITY_PENALTY = Global.getSettings().getFloat(HOSTILITY_ACCESSIBILITY_PENALTY_KEY);
             ORIGINAL_BOUNTY = Global.getSettings().getFloat(BOUNTY_KEY);
             ORIGINAL_STIPEND_BASE = Global.getSettings().getFloat(STIPEND_BASE_KEY);
             ORIGINAL_STIPEND_PER_LEVEL = Global.getSettings().getFloat(STIPEND_PER_LEVEL_KEY);
@@ -333,7 +315,7 @@ public class ModPlugin extends BaseModPlugin {
         try {
             removeScripts();
 
-            isNewGameStartedPriorToSettingsBeingRead = newGame;
+            startingConditionsNeedToBeApplied = newGame;
             battlesResolvedSinceLastSave = 0;
             timeOfLastSave = Global.getSector().getClock().getTimestamp();
             battleStartedSinceLastSave = false;
@@ -410,12 +392,152 @@ public class ModPlugin extends BaseModPlugin {
 
             readSettings();
 
-            isNewGameStartedPriorToSettingsBeingRead = false;
-
             return settingsAreRead = true;
         } catch (Exception e) {
             return settingsAreRead = reportCrash(e);
         }
+    }
+    static void applyStartingConditionsIfNeeded() {
+        if(!startingConditionsNeedToBeApplied) return;
+
+        CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
+        WeightedRandomPicker<MarketAPI> startLocations = new WeightedRandomPicker<>();
+        boolean nexInUse = Global.getSettings().getModManager().isModEnabled(NEX_ID);
+
+        if(TutorialMissionIntel.isTutorialInProgress() || nexInUse) {
+            // Then the starting location shouldn't be changed by this mod
+        } else if(!NAME_OR_ID_OF_STARTING_FACTION.isEmpty()) {
+            String sf = NAME_OR_ID_OF_STARTING_FACTION.toLowerCase();
+            CampaignUIAPI md = Global.getSector().getCampaignUI();
+            boolean found = false;
+
+            for(FactionAPI faction : Global.getSector().getAllFactions()) {
+                if(faction.getId().toLowerCase().equals(sf) || faction.getDisplayName().toLowerCase().equals(sf)) {
+                    found = true;
+
+                    for(MarketAPI m : Global.getSector().getEconomy().getMarketsCopy()) {
+                        if (isValidStartLocation(m) && m.getFaction().getId().equals(faction.getId())) {
+                            startLocations.add(m, (float)Math.pow(m.getSize(), 2));
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            if(!found) md.addMessage("Starting faction not found: " + NAME_OR_ID_OF_STARTING_FACTION, Misc.getNegativeHighlightColor());
+            else if(startLocations.isEmpty()) md.addMessage("No valid markets found for starting faction: " + NAME_OR_ID_OF_STARTING_FACTION, Misc.getNegativeHighlightColor());
+        } else if(RANDOMIZED_STARTING_LOCATION_AND_FACTION) {
+            for(MarketAPI m : Global.getSector().getEconomy().getMarketsCopy()) {
+                if (isValidStartLocation(m)) startLocations.add(m, (float)Math.pow(m.getSize(), 2));
+            }
+        }
+
+        if(!startLocations.isEmpty()) {
+            MarketAPI startAt = startLocations.pick();
+            SectorEntityToken dest = startAt.getPrimaryEntity();
+
+            pf.getContainingLocation().removeEntity(pf);
+            dest.getContainingLocation().addEntity(pf);
+            Global.getSector().setCurrentLocation(dest.getContainingLocation());
+            pf.setLocation(dest.getLocation().x, dest.getLocation().y - dest.getRadius() * 2);
+            pf.setNoEngaging(2.0f);
+            pf.clearAssignments();
+        }
+
+        if(ENABLE_STARTING_REP_OVERRIDES) {
+            LocationAPI startLoc = pf.getContainingLocation();
+            String startFactionID = Factions.NEUTRAL;
+            final FactionAPI startFaction;
+            int otherRelationsToOverride;
+            List<FactionAPI> otherFactions = new ArrayList<>();
+
+            if(Misc.getCommissionFactionId() != null) {
+                startFactionID = Misc.getCommissionFactionId();
+            } else if(!startLoc.isHyperspace()) {
+                float shortestDistanceSoFar = Float.MAX_VALUE;
+
+                for(MarketAPI mkt : Misc.getMarketsInLocation(startLoc)) {
+                    if(mkt.getPrimaryEntity() == null || mkt.getFactionId() == null) continue;
+
+                    float distance = Misc.getDistance(pf, mkt.getPrimaryEntity());
+
+                    if(distance < shortestDistanceSoFar) {
+                        startFactionID = mkt.getFactionId();
+                        shortestDistanceSoFar = distance;
+                    }
+                }
+            }
+
+            startFaction = Global.getSector().getFaction(startFactionID);
+
+            if(!nexInUse && !TutorialMissionIntel.isTutorialInProgress()) {
+                Global.getSector().getFaction(Factions.HEGEMONY).setRelationship(Factions.PLAYER, 0);
+                startFaction.setRelationship(Factions.PLAYER, 0.15f);
+            }
+
+            for (FactionAPI faction : getAllowedFactions()) {
+                if (faction.isShowInIntelTab()) {
+                    if((faction.getId().equals(startFactionID) && !OVERRIDE_STARTING_FACTION_REPUTATION_AT_START)) {
+                        continue;
+                    }
+
+                    switch (faction.getId()) {
+                        case Factions.INDEPENDENT: if(!OVERRIDE_INDEPENDENTS_REPUTATION_AT_START) continue; break;
+                        case Factions.PIRATES: if(!OVERRIDE_PIRATES_REPUTATION_AT_START) continue; break;
+                        default: if(PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START > 0) {
+                            otherFactions.add(faction);
+                        } continue;
+                    }
+
+                    faction.setRelationship(Factions.PLAYER, STARTING_REPUTATION_OVERRIDE * 0.01f);
+                }
+            }
+
+            otherRelationsToOverride = (int)Math.ceil(otherFactions.size() * 0.01f
+                    * PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START);
+
+            if(otherRelationsToOverride > 0) {
+                int overridden = 0;
+                int previousDiff = Integer.MAX_VALUE;
+                WeightedRandomPicker<FactionAPI> picker = new WeightedRandomPicker<>();
+
+                Collections.sort(otherFactions, new Comparator<FactionAPI>() {
+                    public int compare(FactionAPI f1, FactionAPI f2) {
+                        int f1Diff = (int) Math.abs(startFaction.getRepInt(f1.getId()) - STARTING_REPUTATION_OVERRIDE);
+                        int f2Diff = (int) Math.abs(startFaction.getRepInt(f2.getId()) - STARTING_REPUTATION_OVERRIDE);
+
+                        return f1Diff - f2Diff;
+                    }
+                });
+
+                for(int i = 0; i < otherFactions.size(); ++i) {
+                    FactionAPI faction = otherFactions.get(i);
+                    int diff = ALIGN_REPUTATION_OVERRIDES_WITH_STARTING_FACTION
+                            ? (int) Math.abs(startFaction.getRepInt(faction.getId()) - STARTING_REPUTATION_OVERRIDE)
+                            : 0;
+
+                    if(previousDiff == Integer.MAX_VALUE) previousDiff = diff;
+
+                    if(diff > previousDiff) {
+                        otherRelationsToOverride -= pickRelationsToOverride(picker, startFaction, otherRelationsToOverride);
+                    }
+
+                    picker.add(faction);
+                    previousDiff = diff;
+                }
+
+                pickRelationsToOverride(picker, startFaction, otherRelationsToOverride);
+            }
+        }
+
+        startingConditionsNeedToBeApplied = false;
+    }
+    static boolean isValidStartLocation(MarketAPI m) {
+        StarSystemAPI system = m.getStarSystem();
+
+        return system != null && !m.isHidden() && !system.hasTag("theme_hidden") && !system.hasTag("hidden")
+                && m.getFaction() != null;
     }
 
     static Set<String> fetchList(String path) throws IOException, JSONException {

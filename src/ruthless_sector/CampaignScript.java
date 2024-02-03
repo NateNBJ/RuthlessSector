@@ -57,6 +57,8 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         try {
             if(!ModPlugin.readSettingsIfNecessary(false)) return;
 
+            ModPlugin.applyStartingConditionsIfNeeded();
+
             if(!Global.getSector().isPaused()) CombatPlugin.clearDomainDroneEcmBonusFlag();
 
             pf = Global.getSector().getPlayerFleet();
@@ -136,7 +138,11 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
                 float distanceFromCore = pf.getLocation().length() - CORE_RADIUS;
 
-                if (ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE && pf.isInHyperspace() && distanceFromCore > 0) {
+                if (ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE
+                        && pf.isInHyperspace()
+                        && distanceFromCore > 0
+                        && !Misc.isInAbyss(pf)) {
+
                     distanceToNextEncounter.val -= amount * pf.getCurrBurnLevel();
 
                     for(CampaignFleetAPI fleet : remnantFleets.val) {
@@ -150,7 +156,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     }
                 }
 
-                if (distanceToNextEncounter.val <= 0) {
+                if (distanceToNextEncounter.val <= 0 && !Misc.isInAbyss(pf)) {
                     float d = ModPlugin.AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS;
                     distanceToNextEncounter.val = d * 0.5f + random.nextFloat() * d;
                     Vector2f loc = new Vector2f(pf.getLocation());
@@ -417,7 +423,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             Vector2f.add(at, lead, at);
             float distanceFromCore = at.length() - CORE_RADIUS;
 
-            if(distanceFromCore > 0) {
+            if(distanceFromCore > 0 && !Misc.isInAbyss(at)) {
                 at = Misc.getPointAtRadius(at, 3500);
 
                 spawnRemnantFleets(distanceFromCore, at, 250, true);

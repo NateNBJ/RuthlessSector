@@ -24,6 +24,7 @@ public class RS_Nex_MarketCMD extends Nex_MarketCMD {
 
     // TODO - Between major versions of Nex, re-copy this method and replace the
     //  NexFleetInteractionDialogPluginImpl with NexCompatibleFleetInteractionDialogPlugin
+    //  Up to date as of Nex v0.11.1
     @Override
     protected void engage() {
         final SectorEntityToken entity = dialog.getInteractionTarget();

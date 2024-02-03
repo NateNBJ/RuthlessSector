@@ -10,6 +10,7 @@ import com.fs.starfarer.api.input.InputEventAPI;
 import com.fs.starfarer.api.mission.FleetSide;
 import com.fs.starfarer.combat.CombatEngine;
 import com.fs.starfarer.combat.CombatFleetManager;
+import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
 import java.util.List;
@@ -176,6 +177,62 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
     @Override
     public void renderInWorldCoords(ViewportAPI viewport) { }
 
+//    protected CustomPanelAPI panel = null;
+
     @Override
-    public void renderInUICoords(ViewportAPI viewport) { }
+    public void renderInUICoords(ViewportAPI viewport) {
+//        try {
+//            if(true) return;
+//
+//            if (isIrrelevant() || !engine.getCombatUI().isShowingDeploymentDialog()) return;
+//
+//            if (panel == null) {
+//                panel = Global.getSettings().createCustom(600, 100, new BaseCustomUIPanelPlugin() {
+//                    @Override
+//                    public void buttonPressed(Object buttonId) {
+//                        System.out.println("BUTTON PRESSED: " + buttonId);
+//                    }
+//                });
+//                TooltipMakerAPI t = panel.createUIElement(600, 100, false);
+//                t.addPara("TEST", 0);
+////                t.addButton("TEST", "TEST", 200, 20, 0f);
+//                panel.addUIElement(t).inTL(0, 0);
+//                panel.getPosition().setLocation(10, 20 + sprite.getWidth());
+//                panel.getPosition().setSize(600, 100);
+//            }
+//
+//            //renderQuad(100, 100, 200, 200, Color.white, 1f);
+//            PositionAPI p = panel.getPosition();
+//            float x = p.getX();
+//            float y = p.getY();
+//            float w = p.getWidth();
+//            float h = p.getHeight();
+//            renderQuad(x, y, w, h, Color.gray, 1.0f);
+//
+//            panel.render(1f);
+//
+//        } catch (Exception e) { ModPlugin.reportCrash(e); }
+    }
+
+    public static void renderQuad(float x, float y, float width, float height, Color color, float alphaMult) {
+
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+
+        //System.out.println((float)color.getAlpha() * alphaMult);
+        GL11.glColor4ub((byte)color.getRed(),
+                (byte)color.getGreen(),
+                (byte)color.getBlue(),
+                (byte)((float)color.getAlpha() * alphaMult));
+
+        GL11.glBegin(GL11.GL_QUADS);
+        {
+            GL11.glVertex2f(x, y);
+            GL11.glVertex2f(x, y + height);
+            GL11.glVertex2f(x + width, y + height);
+            GL11.glVertex2f(x + width, y);
+        }
+        GL11.glEnd();
+    }
 }
