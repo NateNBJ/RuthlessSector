@@ -57,8 +57,6 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
         try {
             if(!ModPlugin.readSettingsIfNecessary(false)) return;
 
-            ModPlugin.applyStartingConditionsIfNeeded();
-
             if(!Global.getSector().isPaused()) CombatPlugin.clearDomainDroneEcmBonusFlag();
 
             pf = Global.getSector().getPlayerFleet();
@@ -160,7 +158,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     float d = ModPlugin.AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS;
                     distanceToNextEncounter.val = d * 0.5f + random.nextFloat() * d;
                     Vector2f loc = new Vector2f(pf.getLocation());
-                    Vector2f.add(loc, (Vector2f) pf.getVelocity().normalise().scale(2800), loc);
+                    Vector2f.add(loc, (Vector2f) pf.getVelocity().normalise().scale(3800), loc);
                     spawnRemnantFleets(distanceFromCore, loc, 800f, false);
                 }
             }

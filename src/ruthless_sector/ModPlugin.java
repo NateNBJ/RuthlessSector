@@ -340,6 +340,7 @@ public class ModPlugin extends BaseModPlugin {
     @Override
     public void beforeGameSave() {
         try {
+            applyStartingConditionsIfNeeded();
             Saved.updatePersistentData();
             removeScripts();
 
@@ -553,42 +554,43 @@ public class ModPlugin extends BaseModPlugin {
         return list;
     }
 
-    public static boolean reportCrash(Exception exception) {
-        return reportCrash(exception, true);
-    }
-    public static boolean reportCrash(Exception exception, boolean displayToUser) {
+    static void updateBattleDifficulty() {
         try {
-            String stackTrace = "", message = "Ruthless Sector encountered an error!\nPlease let the mod author know.";
+            battleDifficulty.val = enemyStrength.val / playerStrength.val;
 
-            for(int i = 0; i < exception.getStackTrace().length; i++) {
-                StackTraceElement ste = exception.getStackTrace()[i];
-                stackTrace += "    " + ste.toString() + System.lineSeparator();
-            }
-
-            Global.getLogger(ModPlugin.class).error(exception.getMessage() + System.lineSeparator() + stackTrace);
-
-            if (!displayToUser) {
-                return true;
-            } else if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
-                Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
-                Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
-            } else if (Global.getSector() != null) {
-                CampaignUIAPI ui = Global.getSector().getCampaignUI();
-
-                ui.addMessage(message, Color.RED);
-                ui.addMessage(exception.getMessage(), Color.ORANGE);
-                ui.showConfirmDialog(message + "\n\n" + exception.getMessage(), "Ok", null, null, null);
-
-                if(ui.getCurrentInteractionDialog() != null) ui.getCurrentInteractionDialog().dismiss();
-            } else return false;
-
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+//            battleDifficulty.val = Math.pow(enemyStrength.val / playerStrength.val, DIFFICULTY_MULTIPLIER_EXPONENT);
+//            battleDifficulty.val = Math.min(battleDifficulty.val, MAX_BATTLE_DIFFICULTY_ESTIMATION);
+//            battleDifficulty.val *= Math.max (0, 1f - getReloadPenalty());
+        } catch (Exception e) { reportCrash(e); }
     }
-    public static List<FactionAPI> getAllowedFactions() { return allowedFactions; }
+    static void updatePlayerStrength(double strength) {
+        Global.getLogger(ModPlugin.class).info("Player strength: " + strength);
+        playerStrength.val = Math.max(1, Math.max(strength, playerStrength.val));
 
+        updateBattleDifficulty();
+    }
+    static void updateEnemyStrength(double strength) {
+        Global.getLogger(ModPlugin.class).info("Enemy strength: " + strength);
+        enemyStrength.val = Math.max(1, Math.max(strength, enemyStrength.val));
+
+        updateBattleDifficulty();
+    }
+    static void adjustReloadPenalty(float adjustment) throws IOException, JSONException {
+        double penalty = commonData.has(saveGameID) ? commonData.getDouble(saveGameID) : 0;
+        Global.getLogger(ModPlugin.class).info("Reload Penalty Adjustment: " + penalty + " + " + adjustment);
+
+        commonData.put(saveGameID, Math.max(0, Math.min(RELOAD_PENALTY_LIMIT + RELOAD_PENALTY_PER_RELOAD,
+                penalty + adjustment)));
+
+        Global.getSettings().writeTextFileToCommon(COMMON_DATA_PATH, commonData.toString());
+    }
+    static void resetIntegrationValues() {
+        ModPlugin.battleDifficulty.val = 0.0;
+        ModPlugin.playerStrength.val = 0.0;
+        ModPlugin.enemyStrength.val = 0.0;
+    }
+
+    public static List<FactionAPI> getAllowedFactions() { return allowedFactions; }
     public static double tallyShipStrength(Collection<FleetMemberAPI> fleet, boolean isPlayerFleet) {
         float fpTotal = 0;
 
@@ -658,96 +660,6 @@ public class ModPlugin extends BaseModPlugin {
 
         return strength;
     }
-//    public static float getShipStrength(FleetMemberAPI ship) {
-//        float strength = ship.getFleetPointCost();
-//        float fpPerOfficerLevel = ship.getOwner() == 0
-//                ? ModPlugin.ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL
-//                : ModPlugin.ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL;
-//
-//        if(ship.getHullSpec().isCivilianNonCarrier() || ship.isMothballed() || ship.isFighterWing() || ship.isCivilian() || !ship.canBeDeployedForCombat()) {
-//            return 0;
-//        } if(ship.isStation()) {
-//            ShipVariantAPI variant = ship.getVariant();
-//            List<String> slots = variant.getModuleSlots();
-//            float totalOP = 0, detachedOP = 0;
-//
-//            for(int i = 0; i < slots.size(); ++i) {
-//                ShipVariantAPI module = variant.getModuleVariant(slots.get(i));
-//                float op = module.getHullSpec().getOrdnancePoints(null);
-//
-//                totalOP += op;
-//
-//                if(ship.getStatus().isPermaDetached(i+1)) {
-//                    detachedOP += op;
-//                }
-//            }
-//
-//            strength *= (totalOP - detachedOP) / Math.max(1, totalOP);
-//        } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
-//            float dModMult = ship.getBaseDeploymentCostSupplies() > 0
-//                    ? (ship.getDeploymentCostSupplies() / ship.getBaseDeploymentCostSupplies())
-//                    : 1;
-//
-//            strength *= Math.max(1, Math.min(2, 1 + (strength - 5f) / 25f)) * dModMult;
-//        } else{
-//            strength = ship.getDeploymentCostSupplies();
-//        }
-//
-//        float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
-//                : ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
-//
-//        if(ship.getOwner() == 0) {
-//            float commanderLevel = 0;
-//
-//            if(ship.getFleetCommanderForStats() != null && ship.getFleetCommanderForStats().getStats() != null) {
-//                commanderLevel = ship.getFleetCommanderForStats().getStats().getLevel();
-//            } else if(ship.getOwner() == 0) {
-//                commanderLevel = Global.getSector().getPlayerStats().getLevel();
-//            }
-//
-//            strength *= ModPlugin.PLAYER_FLEET_STRENGTH_MULT;
-//            strength *= 1 + ModPlugin.PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL * commanderLevel;
-//        }
-//
-//        return strength * (1 + captainBonus);
-//    }
-
-    static void updateBattleDifficulty() {
-        try {
-            battleDifficulty.val = enemyStrength.val / playerStrength.val;
-
-//            battleDifficulty.val = Math.pow(enemyStrength.val / playerStrength.val, DIFFICULTY_MULTIPLIER_EXPONENT);
-//            battleDifficulty.val = Math.min(battleDifficulty.val, MAX_BATTLE_DIFFICULTY_ESTIMATION);
-//            battleDifficulty.val *= Math.max (0, 1f - getReloadPenalty());
-        } catch (Exception e) { reportCrash(e); }
-    }
-    static void updatePlayerStrength(double strength) {
-        Global.getLogger(ModPlugin.class).info("Player strength: " + strength);
-        playerStrength.val = Math.max(1, Math.max(strength, playerStrength.val));
-
-        updateBattleDifficulty();
-    }
-    static void updateEnemyStrength(double strength) {
-        Global.getLogger(ModPlugin.class).info("Enemy strength: " + strength);
-        enemyStrength.val = Math.max(1, Math.max(strength, enemyStrength.val));
-
-        updateBattleDifficulty();
-    }
-    static void adjustReloadPenalty(float adjustment) throws IOException, JSONException {
-        double penalty = commonData.has(saveGameID) ? commonData.getDouble(saveGameID) : 0;
-        Global.getLogger(ModPlugin.class).info("Reload Penalty Adjustment: " + penalty + " + " + adjustment);
-
-        commonData.put(saveGameID, Math.max(0, Math.min(RELOAD_PENALTY_LIMIT + RELOAD_PENALTY_PER_RELOAD,
-                penalty + adjustment)));
-
-        Global.getSettings().writeTextFileToCommon(COMMON_DATA_PATH, commonData.toString());
-    }
-    static void resetIntegrationValues() {
-        ModPlugin.battleDifficulty.val = 0.0;
-        ModPlugin.playerStrength.val = 0.0;
-        ModPlugin.enemyStrength.val = 0.0;
-    }
-
     public static double getReloadPenalty() throws IOException, JSONException {
         double penalty = commonData.has(saveGameID) ? commonData.getDouble(saveGameID) : 0;
 
@@ -786,5 +698,39 @@ public class ModPlugin extends BaseModPlugin {
     }
     public static BaseCommandPlugin createSalvageDefenderInteraction() {
         return new ruthless_sector.campaign.rulecmd.RS_SalvageDefenderInteraction();
+    }
+    public static boolean reportCrash(Exception exception) {
+        return reportCrash(exception, true);
+    }
+    public static boolean reportCrash(Exception exception, boolean displayToUser) {
+        try {
+            String stackTrace = "", message = "Ruthless Sector encountered an error!\nPlease let the mod author know.";
+
+            for(int i = 0; i < exception.getStackTrace().length; i++) {
+                StackTraceElement ste = exception.getStackTrace()[i];
+                stackTrace += "    " + ste.toString() + System.lineSeparator();
+            }
+
+            Global.getLogger(ModPlugin.class).error(exception.getMessage() + System.lineSeparator() + stackTrace);
+
+            if (!displayToUser) {
+                return true;
+            } else if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
+                Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
+                Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
+            } else if (Global.getSector() != null) {
+                CampaignUIAPI ui = Global.getSector().getCampaignUI();
+
+                ui.addMessage(message, Color.RED);
+                ui.addMessage(exception.getMessage(), Color.ORANGE);
+                ui.showConfirmDialog(message + "\n\n" + exception.getMessage(), "Ok", null, null, null);
+
+                if(ui.getCurrentInteractionDialog() != null) ui.getCurrentInteractionDialog().dismiss();
+            } else return false;
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
