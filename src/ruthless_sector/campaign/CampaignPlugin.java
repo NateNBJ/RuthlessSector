@@ -10,6 +10,7 @@ import com.fs.starfarer.api.campaign.SectorEntityToken;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.util.Misc;
 import data.scripts.TiandongModPlugin;
+import data.scripts.util.MagicSettings;
 import org.magiclib.bounty.ActiveBounty;
 import org.magiclib.bounty.MagicBountyCoordinator;
 import ruthless_sector.CampaignScript;
@@ -17,6 +18,8 @@ import ruthless_sector.ModPlugin;
 
 import java.util.Collection;
 import java.util.Iterator;
+
+import static org.magiclib.util.MagicVariables.MAGICLIB_ID;
 
 public class CampaignPlugin extends BaseCampaignPlugin {
 
@@ -90,14 +93,19 @@ public class CampaignPlugin extends BaseCampaignPlugin {
     }
 
     public static boolean isTargetMagicBounty(SectorEntityToken interactionTarget) {
-        Collection<ActiveBounty> bounties = MagicBountyCoordinator.getInstance().getActiveBounties().values();
-        if (bounties.size() > 0 && interactionTarget instanceof CampaignFleetAPI) {
-            Iterator i$ = bounties.iterator();
+        if(MagicSettings.getBoolean(MAGICLIB_ID, "bounty_board_enabled")) {
+            // MagicBountyCoordinator.getInstance() will throw an exception if bounty_board_enabled is false
+            Collection<ActiveBounty> bounties = MagicBountyCoordinator.getInstance().getActiveBounties().values();
 
-            while(i$.hasNext()) {
-                ActiveBounty bounty = (ActiveBounty)i$.next();
-                if (bounty.getFlagshipId() != null && bounty.getFlagshipId().equals(((CampaignFleetAPI)interactionTarget).getFlagship().getId())) {
-                    return true;
+            if(bounties.size() > 0 && interactionTarget instanceof CampaignFleetAPI) {
+                Iterator i$ = bounties.iterator();
+                String targetId = ((CampaignFleetAPI) interactionTarget).getFlagship().getId();
+
+                while(i$.hasNext()) {
+                    ActiveBounty bounty = (ActiveBounty) i$.next();
+                    if(bounty.getFlagshipId() != null && bounty.getFlagshipId().equals(targetId)) {
+                        return true;
+                    }
                 }
             }
         }
