@@ -8,12 +8,18 @@ import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.graphics.SpriteAPI;
 import com.fs.starfarer.api.input.InputEventAPI;
 import com.fs.starfarer.api.mission.FleetSide;
+import com.fs.starfarer.api.ui.Fonts;
+import com.fs.starfarer.api.util.Misc;
 import com.fs.starfarer.combat.CombatEngine;
 import com.fs.starfarer.combat.CombatFleetManager;
+import org.lazywizard.lazylib.ui.LazyFont;
+import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
 import java.util.List;
 import java.util.*;
+
+import static org.lwjgl.opengl.GL11.GL_PROJECTION;
 
 public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
     static final float
@@ -30,11 +36,13 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
     Set<FleetMemberAPI> selectedForDeployment = new HashSet<>();
     Map<FleetMemberAPI, Integer> clickCount = new HashMap<>();
     CombatEngineAPI engine;
-
+    LazyFont.DrawableString textToDraw;
 
     float deployedStrength = Float.MIN_VALUE, selectedStrength = 0;
     boolean noMothballedShipsAreReserved = true, scheduleSelectionUpdate = true;
     int  limit;
+    double pfStrength = 0;
+    float danger = 0;
 
     boolean isIrrelevant() { return !ModPlugin.SHOW_BATTLE_DIFFICULTY_STARS_ON_DEPLOYMENT_SCREEN || engine == null
             || !engine.isInCampaign() || engine.isSimulation() || engine.isInCampaignSim(); }
@@ -48,6 +56,11 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
             this.engine = engine;
             ef = CombatEngine.getInstance().getFleetManager(1);
             pf = CombatEngine.getInstance().getFleetManager(0);
+
+            final LazyFont font = LazyFont.loadFont(Fonts.INSIGNIA_LARGE);
+            textToDraw = font.createText("ERROR", Misc.getButtonTextColor(), 18f);
+            textToDraw.setAlignment(LazyFont.TextAlignment.CENTER);
+            textToDraw.setAnchor(LazyFont.TextAnchor.TOP_CENTER);
 
             if (CampaignScript.timeHasPassedSinceLastEngagement) { // Then this is the start of a new battle
                 CampaignScript.timeHasPassedSinceLastEngagement = false;
@@ -92,8 +105,8 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
 
                     deployedShips.addAll(pf.getDeployedCopy());
                     deployedShips.addAll(pf.getRetreatedCopy());
-                    deployedShips.addAll(pf.getDisabledCopy());
-                    deployedShips.addAll(pf.getDestroyedCopy());
+                    deployedShips.addAll(pf.getDisabledCopy()); // Disabled includes destroyed, apparently
+//                    deployedShips.addAll(pf.getDestroyedCopy());
 
                     for(FleetMemberAPI ship : deployedShips) deployedStrength += ModPlugin.getShipStrength(ship, true);
 
@@ -105,6 +118,8 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
                             break;
                         }
                     }
+
+                    updateDifficulty();
                 }
 
                 if(scheduleSelectionUpdate) {
@@ -113,6 +128,8 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
                     for(FleetMemberAPI ship : engine.getCombatUI().getCurrentlySelectedInFleetDeploymentDialog()) {
                         selectedStrength += ModPlugin.getShipStrength(ship, true);
                     }
+
+                    updateDifficulty();
                 }
 
                 render();
@@ -126,13 +143,33 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
         } catch (Exception e) { ModPlugin.reportCrash(e); }
     }
 
+    public void updateDifficulty() {
+        try {
+            pfStrength = Math.max(deployedStrength + selectedStrength, ModPlugin.playerStrength.val);
+            danger = CampaignScript.getDanger(pfStrength, ModPlugin.enemyStrength.val);
+
+            final double penalty = ModPlugin.getReloadPenalty();
+            final double difficulty = ModPlugin.getXpMultiplierForDifficulty(ModPlugin.enemyStrength.val / pfStrength);
+
+            textToDraw.setText(" " + (int) (100 * Math.max(0, difficulty * (1f - penalty))) + "% XP ");
+
+            if(penalty >= 0.01 && ModPlugin.RELOAD_PENALTY_PER_RELOAD > 0) {
+                textToDraw.append("\n (reduced by " + (int) (100 * penalty) +  "% due to penalty for reloading after battle) ", Misc.getGrayColor());
+            }
+
+//            textToDraw.append("\nEstimated Strength: " + Misc.getRoundedValueOneAfterDecimalIfNotWhole((float)pfStrength)
+//                    + " vs " + Misc.getRoundedValueOneAfterDecimalIfNotWhole(ModPlugin.enemyStrength.val.floatValue()));
+        } catch (Exception e) {
+            ModPlugin.reportCrash(e);
+        }
+    }
+
     public void render() {
-        double pfStrength = Math.max(deployedStrength + selectedStrength, ModPlugin.playerStrength.val);
-        float danger = CampaignScript.getDanger(pfStrength, ModPlugin.enemyStrength.val);
+        float w = Global.getSettings().getScreenWidth();
+        float h = Global.getSettings().getScreenHeight();
         int stars = (int)Math.ceil(danger);
         float xSpacing = sprite.getWidth() + PIXEL_WIDTH * 2,
-                y = (Global.getSettings().getScreenHeight() * 0.5f - 10) * PIXEL_HEIGHT - sprite.getHeight();
-                //y = PIXEL_HEIGHT * 244f;
+                y = (h * 0.5f - 10) * PIXEL_HEIGHT - sprite.getHeight();
 
         switch (stars) {
             case 1: sprite.setColor(clr1); break;
@@ -153,8 +190,7 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
         }
 
         for(int i = 0; i < stars; ++i) {
-            float x = 10 * PIXEL_WIDTH + i * xSpacing - 1f;
-            //float x = -292 * PIXEL_WIDTH + i * xSpacing;
+            float x = i * xSpacing + PIXEL_WIDTH * 1.5f - (stars * xSpacing * 0.5f);
 
             if(danger - i < 1) {
                 sprite2.setColor(sprite.getColor());
@@ -163,6 +199,18 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
             } else {
                 sprite.render(x, y);
             }
+        }
+
+        if(textToDraw != null) {
+            GL11.glMatrixMode(GL_PROJECTION);
+            GL11.glPushMatrix();
+            GL11.glLoadIdentity();
+            GL11.glOrtho(0, w, 0, h, -1, 1);
+
+            textToDraw.draw(w / 2f, h - sprite.getHeight() - 40);
+//            textToDraw.draw(w / 2f - (textToDraw.getWidth() / 2f), h - sprite.getHeight() - 40);
+
+            GL11.glPopMatrix();
         }
     }
 
@@ -176,6 +224,62 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
     @Override
     public void renderInWorldCoords(ViewportAPI viewport) { }
 
+//    protected CustomPanelAPI panel = null;
+
     @Override
-    public void renderInUICoords(ViewportAPI viewport) { }
+    public void renderInUICoords(ViewportAPI viewport) {
+//        try {
+//            if(true) return;
+//
+//            if (isIrrelevant() || !engine.getCombatUI().isShowingDeploymentDialog()) return;
+//
+//            if (panel == null) {
+//                panel = Global.getSettings().createCustom(600, 100, new BaseCustomUIPanelPlugin() {
+//                    @Override
+//                    public void buttonPressed(Object buttonId) {
+//                        System.out.println("BUTTON PRESSED: " + buttonId);
+//                    }
+//                });
+//                TooltipMakerAPI t = panel.createUIElement(600, 100, false);
+//                t.addPara("TEST", 0);
+////                t.addButton("TEST", "TEST", 200, 20, 0f);
+//                panel.addUIElement(t).inTL(0, 0);
+//                panel.getPosition().setLocation(10, 20 + sprite.getWidth());
+//                panel.getPosition().setSize(600, 100);
+//            }
+//
+//            //renderQuad(100, 100, 200, 200, Color.white, 1f);
+//            PositionAPI p = panel.getPosition();
+//            float x = p.getX();
+//            float y = p.getY();
+//            float w = p.getWidth();
+//            float h = p.getHeight();
+//            renderQuad(x, y, w, h, Color.gray, 1.0f);
+//
+//            panel.render(1f);
+//
+//        } catch (Exception e) { ModPlugin.reportCrash(e); }
+    }
+
+    public static void renderQuad(float x, float y, float width, float height, Color color, float alphaMult) {
+
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+
+        //System.out.println((float)color.getAlpha() * alphaMult);
+        GL11.glColor4ub((byte)color.getRed(),
+                (byte)color.getGreen(),
+                (byte)color.getBlue(),
+                (byte)((float)color.getAlpha() * alphaMult));
+
+        GL11.glBegin(GL11.GL_QUADS);
+        {
+            GL11.glVertex2f(x, y);
+            GL11.glVertex2f(x, y + height);
+            GL11.glVertex2f(x + width, y + height);
+            GL11.glVertex2f(x + width, y);
+        }
+        GL11.glEnd();
+    }
 }
