@@ -1,0 +1,13 @@
+Version 1.8.0
+
+- Updated for Starsector 0.98.5a
+- Fixed a crash that could occur when Max Reputation Loss was set to 1
+- Added a console command to list ship strengths estimates: PrintRuthlessStrengthEstimates
+- Added text to the deployment screen showing the precise XP modifier
+- Improved enemy ship strength estimation to account for CR below 40% at the start of battle. This is to prevent high XP multipliers after repeatedly harrying a weaker enemy fleet
+- Improved wording of strength estimate formula settings descriptions to clarify that it does not alter actual strength
+- Improved commission payment settings description to indicate that it will be overridden if Ashes of the Domain: Question of Loyalty is active
+- Now requires LazyLib
+
+
+Version changes for older updates can be found at https://github.com/NateNBJ/RuthlessSector/releases
