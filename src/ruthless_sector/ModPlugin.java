@@ -1,4 +1,4 @@
-package ruthless_sector; // Test commit
+package ruthless_sector;
 
 import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.GameState;
