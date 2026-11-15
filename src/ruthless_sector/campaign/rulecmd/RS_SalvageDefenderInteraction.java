@@ -9,6 +9,7 @@ import com.fs.starfarer.api.campaign.rules.MemoryAPI;
 import com.fs.starfarer.api.combat.BattleCreationContext;
 import com.fs.starfarer.api.fleet.FleetMemberAPI;
 import com.fs.starfarer.api.impl.campaign.FleetEncounterContext;
+import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl.BaseFIDDelegate;
 import com.fs.starfarer.api.impl.campaign.FleetInteractionDialogPluginImpl.FIDConfig;
 import com.fs.starfarer.api.impl.campaign.ids.*;
@@ -25,7 +26,6 @@ import com.fs.starfarer.api.util.Misc.Token;
 import ruthless_sector.CombatPlugin;
 import ruthless_sector.ModPlugin;
 import ruthless_sector.campaign.CampaignPlugin;
-import ruthless_sector.campaign.FleetInteractionDialogPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,9 +75,9 @@ public class RS_SalvageDefenderInteraction extends BaseCommandPlugin {
         //final FleetInteractionDialogPluginImpl plugin = new FleetInteractionDialogPluginImpl(config);
         // Line above replaced with below in order to use mod compatible FIDP override
         PluginPick<InteractionDialogPlugin> pick = CampaignPlugin.getEncounterInteractionDialogPlugin(dialog.getInteractionTarget(), config);
-        final FleetInteractionDialogPlugin plugin = pick.plugin instanceof FleetInteractionDialogPlugin
-            ? (FleetInteractionDialogPlugin)pick.plugin
-                : new FleetInteractionDialogPlugin();
+        final FleetInteractionDialogPluginImpl plugin = pick.plugin instanceof FleetInteractionDialogPluginImpl
+                ? (FleetInteractionDialogPluginImpl)pick.plugin
+                : new FleetInteractionDialogPluginImpl(config);
 
         // Block below added
         {
