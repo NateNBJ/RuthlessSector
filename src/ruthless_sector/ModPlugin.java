@@ -4,10 +4,7 @@ import com.fs.starfarer.api.BaseModPlugin;
 import com.fs.starfarer.api.GameState;
 import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.ModSpecAPI;
-import com.fs.starfarer.api.campaign.CampaignFleetAPI;
-import com.fs.starfarer.api.campaign.CampaignUIAPI;
-import com.fs.starfarer.api.campaign.FactionAPI;
-import com.fs.starfarer.api.campaign.LocationAPI;
+import com.fs.starfarer.api.campaign.*;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.characters.MutableCharacterStatsAPI;
 import com.fs.starfarer.api.characters.PersonAPI;
@@ -17,7 +14,9 @@ import com.fs.starfarer.api.impl.campaign.DModManager;
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
 import com.fs.starfarer.api.impl.campaign.rulecmd.BaseCommandPlugin;
 import com.fs.starfarer.api.impl.campaign.tutorial.GalatianAcademyStipend;
+import com.fs.starfarer.api.impl.campaign.tutorial.TutorialMissionIntel;
 import com.fs.starfarer.api.util.Misc;
+import com.fs.starfarer.api.util.WeightedRandomPicker;
 import lunalib.lunaSettings.LunaSettings;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -26,8 +25,8 @@ import ruthless_sector.campaign.CampaignPlugin;
 
 import java.awt.*;
 import java.io.IOException;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 
 public class ModPlugin extends BaseModPlugin {
     public static final String
@@ -37,11 +36,13 @@ public class ModPlugin extends BaseModPlugin {
             FACTION_WL_PATH = "data/config/ruthlesssector/faction_rep_change_whitelist.csv",
             FACTION_BL_PATH = "data/config/ruthlesssector/faction_rep_change_blacklist.csv",
             COMMON_DATA_PATH = "sun_rs/reload_penalty_record.json",
+            HOSTILITY_ACCESSIBILITY_PENALTY_KEY = "accessibilityLossWhenAllHostile",
             BOUNTY_KEY = "factionCommissionBounty",
             STIPEND_BASE_KEY = "factionCommissionStipendBase",
-            STIPEND_PER_LEVEL_KEY = "factionCommissionStipendPerLevel";
+            STIPEND_PER_OFFICER_KEY = "factionCommissionStipendPerOfficer";
     public static final double TIMESTAMP_TICKS_PER_DAY = 8.64E7D;
 
+    static final String NEX_ID = "nexerelin";
     static final String LUNALIB_ID = "lunalib";
     static JSONObject settingsCfg = null;
     static <T> T get(String id, Class<T> type) throws Exception {
@@ -134,56 +135,38 @@ public class ModPlugin extends BaseModPlugin {
         OVERRIDE_STARTING_FACTION_REPUTATION_AT_START = getBoolean("overrideStartingFactionReputationAtStart");
         OVERRIDE_INDEPENDENTS_REPUTATION_AT_START = getBoolean("overrideIndependentsReputationAtStart");
         OVERRIDE_PIRATES_REPUTATION_AT_START = getBoolean("overridePiratesReputationAtStart");
-        OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START = getBoolean("overrideReputationsOfOtherKnownFactionsAtStart");
+        PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START = getInt("percentOfOtherKnownFactionReputationsToOverrideAtStart");
 
+        NAME_OR_ID_OF_STARTING_FACTION = getString("nameOrIdOfStartingFaction");
+        RANDOMIZED_STARTING_LOCATION_AND_FACTION = getBoolean("randomizedStartingLocationAndFaction");
+        ALIGN_REPUTATION_OVERRIDES_WITH_STARTING_FACTION = getBoolean("alignReputationOverridesWithStartingFaction");
+
+        Global.getSettings().setFloat(HOSTILITY_ACCESSIBILITY_PENALTY_KEY, ORIGINAL_HOSTILITY_ACCESSIBILITY_PENALTY * getInt("maxAccessibilityLossFromHostility") * 0.01f);
         Global.getSettings().setFloat(BOUNTY_KEY, ORIGINAL_BOUNTY * getFloat(BOUNTY_KEY + "Mult"));
         Global.getSettings().setFloat(STIPEND_BASE_KEY, ORIGINAL_STIPEND_BASE * getFloat(STIPEND_BASE_KEY + "Mult"));
-        Global.getSettings().setFloat(STIPEND_PER_LEVEL_KEY, ORIGINAL_STIPEND_PER_LEVEL * getFloat(STIPEND_PER_LEVEL_KEY + "Mult"));
-
-        if(isNewGameStartedPriorToSettingsBeingRead && ENABLE_STARTING_REP_OVERRIDES) {
-                CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
-                LocationAPI startLoc = pf.getContainingLocation();
-                String startingFactionID = Factions.NEUTRAL;
-
-                if(Misc.getCommissionFactionId() != null) {
-                    startingFactionID = Misc.getCommissionFactionId();
-                } else if(!startLoc.isHyperspace()) {
-                    float shortestDistanceSoFar = Float.MAX_VALUE;
-
-                    for(MarketAPI mkt : Misc.getMarketsInLocation(startLoc)) {
-                        if(mkt.getPrimaryEntity() == null || mkt.getFactionId() == null) continue;
-
-                        float distance = Misc.getDistance(pf, mkt.getPrimaryEntity());
-
-                        if(distance < shortestDistanceSoFar) {
-                            startingFactionID = mkt.getFactionId();
-                            shortestDistanceSoFar = distance;
-                        }
-                    }
-                }
-
-
-                for (FactionAPI faction : getAllowedFactions()) {
-                    if (faction.isShowInIntelTab()) {
-                        if((faction.getId().equals(startingFactionID) && !OVERRIDE_STARTING_FACTION_REPUTATION_AT_START)) {
-                            continue;
-                        }
-
-                        switch (faction.getId()) {
-                            case Factions.INDEPENDENT: if(!OVERRIDE_INDEPENDENTS_REPUTATION_AT_START) continue; break;
-                            case Factions.PIRATES: if(!OVERRIDE_PIRATES_REPUTATION_AT_START) continue; break;
-                            default: if(!OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START) continue; break;
-                        }
-
-                        faction.setRelationship(Factions.PLAYER, STARTING_REPUTATION_OVERRIDE * 0.01f);
-                    }
-                }
-            }
+        Global.getSettings().setFloat(STIPEND_PER_OFFICER_KEY, ORIGINAL_STIPEND_PER_OFFICER * getFloat(STIPEND_PER_OFFICER_KEY + "Mult"));
 
         return true;
     }
+    static int pickRelationsToOverride(WeightedRandomPicker<FactionAPI> picker, FactionAPI startFaction, int maxToOverride) {
+        int overridden = 0;
+
+        while(!picker.isEmpty() && overridden < maxToOverride) {
+            FactionAPI toOverride = picker.pickAndRemove();
+
+            toOverride.setRelationship(Factions.PLAYER, STARTING_REPUTATION_OVERRIDE * 0.01f);
+            overridden++;
+
+            if(startFaction != null && startFaction.getId().equals(Misc.getCommissionFactionId())) {
+                toOverride.setRelationship(startFaction.getId(), STARTING_REPUTATION_OVERRIDE * 0.01f);
+            }
+        }
+
+        return overridden;
+    }
 
     public static boolean
+            SIC_IS_ACTIVE = false,
             ENABLE_STARTING_REP_OVERRIDES = false,
             ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE = true,
             SCALE_XP_GAIN_BASED_ON_BATTLE_DIFFICULTY = true,
@@ -199,13 +182,15 @@ public class ModPlugin extends BaseModPlugin {
             OVERRIDE_STARTING_FACTION_REPUTATION_AT_START = false,
             OVERRIDE_INDEPENDENTS_REPUTATION_AT_START = false,
             OVERRIDE_PIRATES_REPUTATION_AT_START = false,
-            OVERRIDE_REPUTATIONS_OF_OTHER_KNOWN_FACTIONS_AT_START = true,
-            ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = true;
+            ALLOW_REPUTATION_LOSS_EVEN_IF_ALREADY_NEGATIVE = true,
+            RANDOMIZED_STARTING_LOCATION_AND_FACTION = true,
+            ALIGN_REPUTATION_OVERRIDES_WITH_STARTING_FACTION = true;
 
     public static float
-            ORIGINAL_BOUNTY = 300,
-            ORIGINAL_STIPEND_BASE = 5000,
-            ORIGINAL_STIPEND_PER_LEVEL = 1500,
+            ORIGINAL_HOSTILITY_ACCESSIBILITY_PENALTY = 1.0f,
+            ORIGINAL_BOUNTY = 500,
+            ORIGINAL_STIPEND_BASE = 15000,
+            ORIGINAL_STIPEND_PER_OFFICER = 3500,
 
             STARTING_REPUTATION_OVERRIDE = -65,
 
@@ -229,13 +214,6 @@ public class ModPlugin extends BaseModPlugin {
             SKILL_FACTOR_FOR_PLAYER_SHIPS = 0.0f,
             STRENGTH_INCREASE_PER_PLAYER_LEVEL = 0.07f,
 
-            //DIFFICULTY_MULTIPLIER_EXPONENT = 1,
-            //ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
-            //ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL = 0.05f,
-            //PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL = 0.02f,
-            //PLAYER_FLEET_STRENGTH_MULT = 1,
-            //MAX_BATTLE_DIFFICULTY_ESTIMATION = 1.5f,
-
             LOOTED_CREDITS_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_MULTIPLIER = 1.0f,
             LOOTED_SALVAGE_FROM_REMNANTS_MULTIPLIER = 0.5f,
@@ -246,7 +224,11 @@ public class ModPlugin extends BaseModPlugin {
             MAX_REP_LOSS = 10f;
 
     public static int
+            PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START = 40,
             MAX_HYPERSPACE_REMNANT_FLEETS_TO_SPAWN_AT_ONCE = 3;
+
+    public static String
+            NAME_OR_ID_OF_STARTING_FACTION = "";
 
     static List<FactionAPI> allowedFactions = new ArrayList();
     static JSONObject commonData;
@@ -258,7 +240,7 @@ public class ModPlugin extends BaseModPlugin {
     static CampaignScript script;
     static boolean settingsAreRead = false;
     static boolean battleStartedSinceLastSave = false;
-    static boolean isNewGameStartedPriorToSettingsBeingRead = false;
+    static boolean startingConditionsNeedToBeApplied = false;
     static int battlesResolvedSinceLastSave = 0;
     static long timeOfLastSave = 0;
     static String saveGameID;
@@ -316,9 +298,10 @@ public class ModPlugin extends BaseModPlugin {
                         spec.getName(), minimumVersion, currentVersion);
             }
 
+            ORIGINAL_HOSTILITY_ACCESSIBILITY_PENALTY = Global.getSettings().getFloat(HOSTILITY_ACCESSIBILITY_PENALTY_KEY);
             ORIGINAL_BOUNTY = Global.getSettings().getFloat(BOUNTY_KEY);
             ORIGINAL_STIPEND_BASE = Global.getSettings().getFloat(STIPEND_BASE_KEY);
-            ORIGINAL_STIPEND_PER_LEVEL = Global.getSettings().getFloat(STIPEND_PER_LEVEL_KEY);
+            ORIGINAL_STIPEND_PER_OFFICER = Global.getSettings().getFloat(STIPEND_PER_OFFICER_KEY);
 
             readSettingsIfNecessary(true);
         } catch (Exception e) {
@@ -333,7 +316,7 @@ public class ModPlugin extends BaseModPlugin {
         try {
             removeScripts();
 
-            isNewGameStartedPriorToSettingsBeingRead = newGame;
+            startingConditionsNeedToBeApplied = newGame;
             battlesResolvedSinceLastSave = 0;
             timeOfLastSave = Global.getSector().getClock().getTimestamp();
             battleStartedSinceLastSave = false;
@@ -358,6 +341,7 @@ public class ModPlugin extends BaseModPlugin {
     @Override
     public void beforeGameSave() {
         try {
+            applyStartingConditionsIfNeeded();
             Saved.updatePersistentData();
             removeScripts();
 
@@ -408,14 +392,156 @@ public class ModPlugin extends BaseModPlugin {
                 }
             }
 
-            readSettings();
+            SIC_IS_ACTIVE = Global.getSettings().getModManager().isModEnabled("second_in_command");
 
-            isNewGameStartedPriorToSettingsBeingRead = false;
+            readSettings();
 
             return settingsAreRead = true;
         } catch (Exception e) {
             return settingsAreRead = reportCrash(e);
         }
+    }
+    static void applyStartingConditionsIfNeeded() {
+        if(!startingConditionsNeedToBeApplied) return;
+
+        CampaignFleetAPI pf = Global.getSector().getPlayerFleet();
+        WeightedRandomPicker<MarketAPI> startLocations = new WeightedRandomPicker<>();
+        boolean nexInUse = Global.getSettings().getModManager().isModEnabled(NEX_ID);
+
+        if(TutorialMissionIntel.isTutorialInProgress() || nexInUse) {
+            // Then the starting location shouldn't be changed by this mod
+        } else if(!NAME_OR_ID_OF_STARTING_FACTION.isEmpty()) {
+            String sf = NAME_OR_ID_OF_STARTING_FACTION.toLowerCase();
+            CampaignUIAPI md = Global.getSector().getCampaignUI();
+            boolean found = false;
+
+            for(FactionAPI faction : Global.getSector().getAllFactions()) {
+                if(faction.getId().toLowerCase().equals(sf) || faction.getDisplayName().toLowerCase().equals(sf)) {
+                    found = true;
+
+                    for(MarketAPI m : Global.getSector().getEconomy().getMarketsCopy()) {
+                        if (isValidStartLocation(m) && m.getFaction().getId().equals(faction.getId())) {
+                            startLocations.add(m, (float)Math.pow(m.getSize(), 2));
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+            if(!found) md.addMessage("Starting faction not found: " + NAME_OR_ID_OF_STARTING_FACTION, Misc.getNegativeHighlightColor());
+            else if(startLocations.isEmpty()) md.addMessage("No valid markets found for starting faction: " + NAME_OR_ID_OF_STARTING_FACTION, Misc.getNegativeHighlightColor());
+        } else if(RANDOMIZED_STARTING_LOCATION_AND_FACTION) {
+            for(MarketAPI m : Global.getSector().getEconomy().getMarketsCopy()) {
+                if (isValidStartLocation(m)) startLocations.add(m, (float)Math.pow(m.getSize(), 2));
+            }
+        }
+
+        if(!startLocations.isEmpty()) {
+            MarketAPI startAt = startLocations.pick();
+            SectorEntityToken dest = startAt.getPrimaryEntity();
+
+            pf.getContainingLocation().removeEntity(pf);
+            dest.getContainingLocation().addEntity(pf);
+            Global.getSector().setCurrentLocation(dest.getContainingLocation());
+            pf.setLocation(dest.getLocation().x, dest.getLocation().y - dest.getRadius() * 2);
+            pf.setNoEngaging(2.0f);
+            pf.clearAssignments();
+        }
+
+        if(ENABLE_STARTING_REP_OVERRIDES) {
+            LocationAPI startLoc = pf.getContainingLocation();
+            String startFactionID = Factions.NEUTRAL;
+            final FactionAPI startFaction;
+            int otherRelationsToOverride;
+            List<FactionAPI> otherFactions = new ArrayList<>();
+
+            if(Misc.getCommissionFactionId() != null) {
+                startFactionID = Misc.getCommissionFactionId();
+            } else if(!startLoc.isHyperspace()) {
+                float shortestDistanceSoFar = Float.MAX_VALUE;
+
+                for(MarketAPI mkt : Misc.getMarketsInLocation(startLoc)) {
+                    if(mkt.getPrimaryEntity() == null || mkt.getFactionId() == null) continue;
+
+                    float distance = Misc.getDistance(pf, mkt.getPrimaryEntity());
+
+                    if(distance < shortestDistanceSoFar) {
+                        startFactionID = mkt.getFactionId();
+                        shortestDistanceSoFar = distance;
+                    }
+                }
+            }
+
+            startFaction = Global.getSector().getFaction(startFactionID);
+
+            if(!nexInUse && !TutorialMissionIntel.isTutorialInProgress()) {
+                Global.getSector().getFaction(Factions.HEGEMONY).setRelationship(Factions.PLAYER, 0);
+                startFaction.setRelationship(Factions.PLAYER, 0.15f);
+            }
+
+            for (FactionAPI faction : getAllowedFactions()) {
+                if (faction.isShowInIntelTab()) {
+                    if((faction.getId().equals(startFactionID) && !OVERRIDE_STARTING_FACTION_REPUTATION_AT_START)) {
+                        continue;
+                    }
+
+                    switch (faction.getId()) {
+                        case Factions.INDEPENDENT: if(!OVERRIDE_INDEPENDENTS_REPUTATION_AT_START) continue; break;
+                        case Factions.PIRATES: if(!OVERRIDE_PIRATES_REPUTATION_AT_START) continue; break;
+                        default: if(PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START > 0) {
+                            otherFactions.add(faction);
+                        } continue;
+                    }
+
+                    faction.setRelationship(Factions.PLAYER, STARTING_REPUTATION_OVERRIDE * 0.01f);
+                }
+            }
+
+            otherRelationsToOverride = (int)Math.ceil(otherFactions.size() * 0.01f
+                    * PERCENT_OF_OTHER_KNOWN_FACTION_REPUTATIONS_TO_OVERRIDE_AT_START);
+
+            if(otherRelationsToOverride > 0) {
+                int overridden = 0;
+                int previousDiff = Integer.MAX_VALUE;
+                WeightedRandomPicker<FactionAPI> picker = new WeightedRandomPicker<>();
+
+                Collections.sort(otherFactions, new Comparator<FactionAPI>() {
+                    public int compare(FactionAPI f1, FactionAPI f2) {
+                        int f1Diff = (int) Math.abs(startFaction.getRepInt(f1.getId()) - STARTING_REPUTATION_OVERRIDE);
+                        int f2Diff = (int) Math.abs(startFaction.getRepInt(f2.getId()) - STARTING_REPUTATION_OVERRIDE);
+
+                        return f1Diff - f2Diff;
+                    }
+                });
+
+                for(int i = 0; i < otherFactions.size(); ++i) {
+                    FactionAPI faction = otherFactions.get(i);
+                    int diff = ALIGN_REPUTATION_OVERRIDES_WITH_STARTING_FACTION
+                            ? (int) Math.abs(startFaction.getRepInt(faction.getId()) - STARTING_REPUTATION_OVERRIDE)
+                            : 0;
+
+                    if(previousDiff == Integer.MAX_VALUE) previousDiff = diff;
+
+                    if(diff > previousDiff) {
+                        otherRelationsToOverride -= pickRelationsToOverride(picker, startFaction, otherRelationsToOverride);
+                    }
+
+                    picker.add(faction);
+                    previousDiff = diff;
+                }
+
+                pickRelationsToOverride(picker, startFaction, otherRelationsToOverride);
+            }
+        }
+
+        startingConditionsNeedToBeApplied = false;
+    }
+    static boolean isValidStartLocation(MarketAPI m) {
+        StarSystemAPI system = m.getStarSystem();
+
+        return system != null && !m.isHidden() && !system.hasTag("theme_hidden") && !system.hasTag("hidden")
+                && m.getFaction() != null;
     }
 
     static Set<String> fetchList(String path) throws IOException, JSONException {
@@ -431,42 +557,43 @@ public class ModPlugin extends BaseModPlugin {
         return list;
     }
 
-    public static boolean reportCrash(Exception exception) {
-        return reportCrash(exception, true);
-    }
-    public static boolean reportCrash(Exception exception, boolean displayToUser) {
+    static void updateBattleDifficulty() {
         try {
-            String stackTrace = "", message = "Ruthless Sector encountered an error!\nPlease let the mod author know.";
+            battleDifficulty.val = enemyStrength.val / playerStrength.val;
 
-            for(int i = 0; i < exception.getStackTrace().length; i++) {
-                StackTraceElement ste = exception.getStackTrace()[i];
-                stackTrace += "    " + ste.toString() + System.lineSeparator();
-            }
-
-            Global.getLogger(ModPlugin.class).error(exception.getMessage() + System.lineSeparator() + stackTrace);
-
-            if (!displayToUser) {
-                return true;
-            } else if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
-                Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
-                Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
-            } else if (Global.getSector() != null) {
-                CampaignUIAPI ui = Global.getSector().getCampaignUI();
-
-                ui.addMessage(message, Color.RED);
-                ui.addMessage(exception.getMessage(), Color.ORANGE);
-                ui.showConfirmDialog(message + "\n\n" + exception.getMessage(), "Ok", null, null, null);
-
-                if(ui.getCurrentInteractionDialog() != null) ui.getCurrentInteractionDialog().dismiss();
-            } else return false;
-
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+//            battleDifficulty.val = Math.pow(enemyStrength.val / playerStrength.val, DIFFICULTY_MULTIPLIER_EXPONENT);
+//            battleDifficulty.val = Math.min(battleDifficulty.val, MAX_BATTLE_DIFFICULTY_ESTIMATION);
+//            battleDifficulty.val *= Math.max (0, 1f - getReloadPenalty());
+        } catch (Exception e) { reportCrash(e); }
     }
-    public static List<FactionAPI> getAllowedFactions() { return allowedFactions; }
+    static void updatePlayerStrength(double strength) {
+        Global.getLogger(ModPlugin.class).info("Player strength: " + strength);
+        playerStrength.val = Math.max(1, Math.max(strength, playerStrength.val));
 
+        updateBattleDifficulty();
+    }
+    static void updateEnemyStrength(double strength) {
+        Global.getLogger(ModPlugin.class).info("Enemy strength: " + strength);
+        enemyStrength.val = Math.max(1, Math.max(strength, enemyStrength.val));
+
+        updateBattleDifficulty();
+    }
+    static void adjustReloadPenalty(float adjustment) throws IOException, JSONException {
+        double penalty = commonData.has(saveGameID) ? commonData.getDouble(saveGameID) : 0;
+        Global.getLogger(ModPlugin.class).info("Reload Penalty Adjustment: " + penalty + " + " + adjustment);
+
+        commonData.put(saveGameID, Math.max(0, Math.min(RELOAD_PENALTY_LIMIT + RELOAD_PENALTY_PER_RELOAD,
+                penalty + adjustment)));
+
+        Global.getSettings().writeTextFileToCommon(COMMON_DATA_PATH, commonData.toString());
+    }
+    static void resetIntegrationValues() {
+        ModPlugin.battleDifficulty.val = 0.0;
+        ModPlugin.playerStrength.val = 0.0;
+        ModPlugin.enemyStrength.val = 0.0;
+    }
+
+    public static List<FactionAPI> getAllowedFactions() { return allowedFactions; }
     public static double tallyShipStrength(Collection<FleetMemberAPI> fleet, boolean isPlayerFleet) {
         float fpTotal = 0;
 
@@ -519,16 +646,32 @@ public class ModPlugin extends BaseModPlugin {
             float dModMult = (float) Math.pow(1 - dModFactor, dMods);
             float sModMult = (float) Math.pow(1 + sModFactor, sMods);
             float skillMult = (float) Math.pow(1 + skillFactor, skills);
-            float playerStrengthMult = 1;
+            float commandMult = 1;
+
+            // The effect of SiC on enemy fleet seems to be minor, and power from the player's SiC officers is covered by general power based on player level
+//            if(ModPlugin.SIC_IS_ACTIVE) {
+//                SCData command = SCUtils.getFleetData(ship.getFleetData().getFleet());
+//                List<SCBaseSkillPlugin> commandSkills = command.getAllActiveSkillsPlugins();
+//                commandMult += commandSkills.size() * ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL; // TODO
+//            } else
 
             if(isPlayerShip) {
                 MutableCharacterStatsAPI stats = Global.getSector().getPlayerPerson().getStats();
-                int effectiveLevel = Math.max(0, Math.min(15, stats.getLevel() - stats.getPoints()));
+//                int effectiveLevel = Math.max(0, Math.min(15, stats.getLevel() - stats.getPoints()));
+                int level = Math.max(0, Math.min(15, stats.getLevel())); // It's best to use actual level, since it is used as a general measure of progress rather than actual power
 
-                playerStrengthMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL * effectiveLevel;
+                commandMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL * level;
             }
 
-            strength = fp * (1 + (fp - 5f) / 25f) * dModMult * sModMult * skillMult * playerStrengthMult;
+            if(!isPlayerShip) { // Low CR on the players part is their fault. This is just to prevent exploiting AI
+                if(ship.getRepairTracker().getCR() <= 0.2f) { // Critical malfunctions start at 20% CR
+                    return 0;
+                } else if(ship.getRepairTracker().getCR() < 0.4f) { // Temporary malfunctions start at 40% CR
+                    fp = fp * 5f * (ship.getRepairTracker().getCR() - 0.2f); // 0% at 20% CR, 100% at 40% CR
+                }
+            }
+
+            strength = fp * (1 + (fp - 5f) / 25f) * dModMult * sModMult * skillMult * commandMult;
 
 //            Global.getLogger(ModPlugin.class).info(String.format("%20s strength: %3.1f = %3.1f * %.2f * %.2f * %.2f * %.2f",
 //                    ship.getHullId(), strength, fp * (1 + (fp - 5f) / 25f), dModMult, sModMult, skillMult, playerStrengthMult));
@@ -536,96 +679,6 @@ public class ModPlugin extends BaseModPlugin {
 
         return strength;
     }
-//    public static float getShipStrength(FleetMemberAPI ship) {
-//        float strength = ship.getFleetPointCost();
-//        float fpPerOfficerLevel = ship.getOwner() == 0
-//                ? ModPlugin.ALLY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL
-//                : ModPlugin.ENEMY_OFFICER_INCREASE_TO_SHIP_STRENGTH_PER_LEVEL;
-//
-//        if(ship.getHullSpec().isCivilianNonCarrier() || ship.isMothballed() || ship.isFighterWing() || ship.isCivilian() || !ship.canBeDeployedForCombat()) {
-//            return 0;
-//        } if(ship.isStation()) {
-//            ShipVariantAPI variant = ship.getVariant();
-//            List<String> slots = variant.getModuleSlots();
-//            float totalOP = 0, detachedOP = 0;
-//
-//            for(int i = 0; i < slots.size(); ++i) {
-//                ShipVariantAPI module = variant.getModuleVariant(slots.get(i));
-//                float op = module.getHullSpec().getOrdnancePoints(null);
-//
-//                totalOP += op;
-//
-//                if(ship.getStatus().isPermaDetached(i+1)) {
-//                    detachedOP += op;
-//                }
-//            }
-//
-//            strength *= (totalOP - detachedOP) / Math.max(1, totalOP);
-//        } else if(ship.getHullSpec().hasTag("UNBOARDABLE")) {
-//            float dModMult = ship.getBaseDeploymentCostSupplies() > 0
-//                    ? (ship.getDeploymentCostSupplies() / ship.getBaseDeploymentCostSupplies())
-//                    : 1;
-//
-//            strength *= Math.max(1, Math.min(2, 1 + (strength - 5f) / 25f)) * dModMult;
-//        } else{
-//            strength = ship.getDeploymentCostSupplies();
-//        }
-//
-//        float captainBonus = (ship.getCaptain() == Global.getSector().getPlayerPerson() || ship.getCaptain().isDefault()) ? 0
-//                : ship.getCaptain().getStats().getLevel() * fpPerOfficerLevel;
-//
-//        if(ship.getOwner() == 0) {
-//            float commanderLevel = 0;
-//
-//            if(ship.getFleetCommanderForStats() != null && ship.getFleetCommanderForStats().getStats() != null) {
-//                commanderLevel = ship.getFleetCommanderForStats().getStats().getLevel();
-//            } else if(ship.getOwner() == 0) {
-//                commanderLevel = Global.getSector().getPlayerStats().getLevel();
-//            }
-//
-//            strength *= ModPlugin.PLAYER_FLEET_STRENGTH_MULT;
-//            strength *= 1 + ModPlugin.PLAYER_INCREASE_TO_FLEET_STRENGTH_PER_LEVEL * commanderLevel;
-//        }
-//
-//        return strength * (1 + captainBonus);
-//    }
-
-    static void updateBattleDifficulty() {
-        try {
-            battleDifficulty.val = enemyStrength.val / playerStrength.val;
-
-//            battleDifficulty.val = Math.pow(enemyStrength.val / playerStrength.val, DIFFICULTY_MULTIPLIER_EXPONENT);
-//            battleDifficulty.val = Math.min(battleDifficulty.val, MAX_BATTLE_DIFFICULTY_ESTIMATION);
-//            battleDifficulty.val *= Math.max (0, 1f - getReloadPenalty());
-        } catch (Exception e) { reportCrash(e); }
-    }
-    static void updatePlayerStrength(double strength) {
-        Global.getLogger(ModPlugin.class).info("Player strength: " + strength);
-        playerStrength.val = Math.max(1, Math.max(strength, playerStrength.val));
-
-        updateBattleDifficulty();
-    }
-    static void updateEnemyStrength(double strength) {
-        Global.getLogger(ModPlugin.class).info("Enemy strength: " + strength);
-        enemyStrength.val = Math.max(1, Math.max(strength, enemyStrength.val));
-
-        updateBattleDifficulty();
-    }
-    static void adjustReloadPenalty(float adjustment) throws IOException, JSONException {
-        double penalty = commonData.has(saveGameID) ? commonData.getDouble(saveGameID) : 0;
-        Global.getLogger(ModPlugin.class).info("Reload Penalty Adjustment: " + penalty + " + " + adjustment);
-
-        commonData.put(saveGameID, Math.max(0, Math.min(RELOAD_PENALTY_LIMIT + RELOAD_PENALTY_PER_RELOAD,
-                penalty + adjustment)));
-
-        Global.getSettings().writeTextFileToCommon(COMMON_DATA_PATH, commonData.toString());
-    }
-    static void resetIntegrationValues() {
-        ModPlugin.battleDifficulty.val = 0.0;
-        ModPlugin.playerStrength.val = 0.0;
-        ModPlugin.enemyStrength.val = 0.0;
-    }
-
     public static double getReloadPenalty() throws IOException, JSONException {
         double penalty = commonData.has(saveGameID) ? commonData.getDouble(saveGameID) : 0;
 
@@ -664,5 +717,39 @@ public class ModPlugin extends BaseModPlugin {
     }
     public static BaseCommandPlugin createSalvageDefenderInteraction() {
         return new ruthless_sector.campaign.rulecmd.RS_SalvageDefenderInteraction();
+    }
+    public static boolean reportCrash(Exception exception) {
+        return reportCrash(exception, true);
+    }
+    public static boolean reportCrash(Exception exception, boolean displayToUser) {
+        try {
+            String stackTrace = "", message = "Ruthless Sector encountered an error!\nPlease let the mod author know.";
+
+            for(int i = 0; i < exception.getStackTrace().length; i++) {
+                StackTraceElement ste = exception.getStackTrace()[i];
+                stackTrace += "    " + ste.toString() + System.lineSeparator();
+            }
+
+            Global.getLogger(ModPlugin.class).error(exception.getMessage() + System.lineSeparator() + stackTrace);
+
+            if (!displayToUser) {
+                return true;
+            } else if (Global.getCombatEngine() != null && Global.getCurrentState() == GameState.COMBAT) {
+                Global.getCombatEngine().getCombatUI().addMessage(1, Color.ORANGE, exception.getMessage());
+                Global.getCombatEngine().getCombatUI().addMessage(2, Color.RED, message);
+            } else if (Global.getSector() != null) {
+                CampaignUIAPI ui = Global.getSector().getCampaignUI();
+
+                ui.addMessage(message, Color.RED);
+                ui.addMessage(exception.getMessage(), Color.ORANGE);
+                ui.showConfirmDialog(message + "\n\n" + exception.getMessage(), "Ok", null, null, null);
+
+                if(ui.getCurrentInteractionDialog() != null) ui.getCurrentInteractionDialog().dismiss();
+            } else return false;
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

@@ -136,7 +136,11 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
 
                 float distanceFromCore = pf.getLocation().length() - CORE_RADIUS;
 
-                if (ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE && pf.isInHyperspace() && distanceFromCore > 0) {
+                if (ModPlugin.ENABLE_REMNANT_ENCOUNTERS_IN_HYPERSPACE
+                        && pf.isInHyperspace()
+                        && distanceFromCore > 0
+                        && !Misc.isInAbyss(pf)) {
+
                     distanceToNextEncounter.val -= amount * pf.getCurrBurnLevel();
 
                     for(CampaignFleetAPI fleet : remnantFleets.val) {
@@ -150,11 +154,11 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
                     }
                 }
 
-                if (distanceToNextEncounter.val <= 0) {
+                if (distanceToNextEncounter.val <= 0 && !Misc.isInAbyss(pf)) {
                     float d = ModPlugin.AVERAGE_DISTANCE_BETWEEN_REMNANT_ENCOUNTERS;
                     distanceToNextEncounter.val = d * 0.5f + random.nextFloat() * d;
                     Vector2f loc = new Vector2f(pf.getLocation());
-                    Vector2f.add(loc, (Vector2f) pf.getVelocity().normalise().scale(2800), loc);
+                    Vector2f.add(loc, (Vector2f) pf.getVelocity().normalise().scale(3800), loc);
                     spawnRemnantFleets(distanceFromCore, loc, 800f, false);
                 }
             }
@@ -263,11 +267,14 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             float maxHate = 0.01f * ModPlugin.MAX_REP_LOSS;
             float hate = Math.min(maxHate, calculateHate(hater, hatersEnemy) * maxHate);
 
-            hater.adjustRelationship("player", -hate);
-            CoreReputationPlugin.addAdjustmentMessage(-hate, hater, null, null, null, null, null, true, 0f,
-                    "Change caused by " + hatersEnemy.getRelToPlayer().getLevel().getDisplayName().toLowerCase()
-                            + " standing with their enemy, " + hatersEnemy.getDisplayNameWithArticle());
-            Global.getSoundPlayer().playUISound("ui_rep_drop", 0.85f, 0.5f);
+            if (hate >= 0.01f) {
+                hater.adjustRelationship("player", -hate);
+                CoreReputationPlugin.addAdjustmentMessage(-hate, hater, null, null, null, null, Misc.getTextColor(), true, 0f,
+                        "Change caused by " + hatersEnemy.getRelToPlayer().getLevel().getDisplayName().toLowerCase()
+                                + " standing with their enemy, " + hatersEnemy.getDisplayNameWithArticle());
+
+                Global.getSoundPlayer().playUISound("ui_rep_drop", 0.85f, 0.5f);
+            }
         }
     }
 
@@ -417,7 +424,7 @@ public class CampaignScript extends BaseCampaignEventListener implements EveryFr
             Vector2f.add(at, lead, at);
             float distanceFromCore = at.length() - CORE_RADIUS;
 
-            if(distanceFromCore > 0) {
+            if(distanceFromCore > 0 && !Misc.isInAbyss(at)) {
                 at = Misc.getPointAtRadius(at, 3500);
 
                 spawnRemnantFleets(distanceFromCore, at, 250, true);

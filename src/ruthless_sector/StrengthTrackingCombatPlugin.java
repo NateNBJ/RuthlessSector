@@ -16,8 +16,8 @@ import org.lazywizard.lazylib.ui.LazyFont;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.*;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 
 import static org.lwjgl.opengl.GL11.GL_PROJECTION;
 
@@ -167,7 +167,7 @@ public class StrengthTrackingCombatPlugin implements EveryFrameCombatPlugin {
     public void render() {
         float w = Global.getSettings().getScreenWidth();
         float h = Global.getSettings().getScreenHeight();
-        int stars = (int)Math.ceil(danger);
+        int stars = (int)Math.ceil(Math.round(danger * 10f) / 10f); // Round to avoid nearly-invisible stars
         float xSpacing = sprite.getWidth() + PIXEL_WIDTH * 2,
                 y = (h * 0.5f - 10) * PIXEL_HEIGHT - sprite.getHeight();
 

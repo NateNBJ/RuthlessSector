@@ -133,11 +133,19 @@ public class PrintStrengthEstimates implements BaseCommand {
             skillMult = (float) Math.pow(1 + skillFactor, skills);
             commandMult = 1;
 
+            // The effect of SiC on enemy fleet seems to be minor, and power from the player's SiC officers is covered by general power based on player level
+//            if(ModPlugin.SIC_IS_ACTIVE) {
+//                SCData command = SCUtils.getFleetData(ship.getFleetData().getFleet());
+//                List<SCBaseSkillPlugin> commandSkills = command.getAllActiveSkillsPlugins();
+//                commandMult += commandSkills.size() * ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL; // TODO
+//            } else
+
             if(isPlayerShip) {
                 MutableCharacterStatsAPI stats = Global.getSector().getPlayerPerson().getStats();
-                int effectiveLevel = Math.max(0, Math.min(15, stats.getLevel() - stats.getPoints()));
+//                int effectiveLevel = Math.max(0, Math.min(15, stats.getLevel() - stats.getPoints()));
+                int level = Math.max(0, Math.min(15, stats.getLevel())); // It's best to use actual level, since it is used as a general measure of progress rather than actual power
 
-                commandMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL * effectiveLevel;
+                commandMult += ModPlugin.STRENGTH_INCREASE_PER_PLAYER_LEVEL * level;
             }
         }
 
